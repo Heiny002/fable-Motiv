@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// SQLite for local dev; switch provider to "postgresql" for production.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  // "supportive" | "challenging" — the two MVP coach personalities
+  coachStyle   String   @default("supportive")
+  createdAt    DateTime @default(now())
+  goals        Goal[]
+}
+
+model Goal {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String    @default("")
+  targetDate  DateTime?
+  // "active" | "completed" | "abandoned"
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+  steps       Step[]
+  checkIns    CheckIn[]
+
+  @@index([userId])
+}
+
+model Step {
+  id        String    @id @default(cuid())
+  goalId    String
+  goal      Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  order     Int
+  title     String
+  detail    String    @default("")
+  completed Boolean   @default(false)
+  completedAt DateTime?
+
+  @@index([goalId])
+}
+
+model CheckIn {
+  id        String   @id @default(cuid())
+  goalId    String
+  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  // 1-5 self-reported mood/momentum
+  mood      Int
+  note      String   @default("")
+  // AI coach's response to this check-in
+  coachReply String  @default("")
+  createdAt DateTime @default(now())
+
+  @@index([goalId])
+}
