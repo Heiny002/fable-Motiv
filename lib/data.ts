@@ -181,6 +181,7 @@ export async function addMessage(input: {
   user_id: string;
   role: "user" | "assistant";
   content: string;
+  blocks?: unknown[] | null;
 }): Promise<ChatMessage> {
   return unwrap(await db().from("messages").insert(input).select("*").single<ChatMessage>());
 }
