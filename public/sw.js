@@ -36,20 +36,26 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let payload = { title: "Motiv.ai", body: "Your coach is waiting.", url: "/checkin" };
+  let payload = { title: "Motiv.ai", body: "Your coach is waiting.", url: "/checkin", badge: 1 };
   try {
     payload = { ...payload, ...event.data.json() };
   } catch (e) {
     /* use defaults */
   }
-  event.waitUntil(
+  const tasks = [
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: "/icon.svg",
       badge: "/icon.svg",
       data: { url: payload.url },
-    })
-  );
+    }),
+  ];
+  // Set a Home Screen icon badge (iOS 16.4+ installed PWAs, Chrome, etc.).
+  if (self.navigator && "setAppBadge" in self.navigator) {
+    const count = typeof payload.badge === "number" ? payload.badge : 1;
+    tasks.push(self.navigator.setAppBadge(count).catch(() => {}));
+  }
+  event.waitUntil(Promise.all(tasks));
 });
 
 self.addEventListener("notificationclick", (event) => {
