@@ -11,9 +11,13 @@ const schema = z.object({ message: z.string().min(1).max(4000) });
 
 // GET: chat history
 export const GET = withUser(async (user) => {
-  const messages = await recentMessages(user.id, 80);
+  const messages = await recentMessages(user.id, 120);
   return NextResponse.json({
-    messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, created_at: m.created_at })),
+    // Skip tool-only rows (tool_result turns are stored with empty text) so the
+    // UI shows only real conversation.
+    messages: messages
+      .filter((m) => m.content && m.content.trim() !== "")
+      .map((m) => ({ id: m.id, role: m.role, content: m.content, created_at: m.created_at })),
   });
 });
 

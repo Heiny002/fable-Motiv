@@ -43,6 +43,9 @@ export interface ChatMessage {
   user_id: string;
   role: "user" | "assistant";
   content: string;
+  // Structured content (text + tool_use / tool_result blocks) for faithful
+  // model replay; null for plain text messages.
+  blocks: unknown[] | null;
   created_at: string;
 }
 
