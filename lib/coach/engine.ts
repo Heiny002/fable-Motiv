@@ -97,6 +97,13 @@ export async function* coachTurn(
 
       const response = await stream.finalMessage();
 
+      const toolNames = response.content
+        .filter((b) => b.type === "tool_use")
+        .map((b) => (b as Anthropic.ToolUseBlock).name);
+      console.log(
+        `[coach] user=${user.id} round=${round} stop=${response.stop_reason} tools=[${toolNames.join(",")}]`
+      );
+
       if (response.stop_reason === "refusal") {
         const note = "I can't help with that one — let's get back to your goals.";
         fullText += (fullText ? "\n\n" : "") + note;
@@ -110,14 +117,17 @@ export async function* coachTurn(
         for (const block of response.content) {
           if (block.type !== "tool_use") continue;
           try {
+            console.log(`[coach] tool=${block.name} input=${JSON.stringify(block.input)}`);
             const outcome = await executeCoachTool(
               user.id,
               block.name,
               block.input as Record<string, unknown>
             );
             mutated = mutated || outcome.mutated;
+            console.log(`[coach] tool=${block.name} result=${outcome.result}`);
             results.push({ type: "tool_result", tool_use_id: block.id, content: outcome.result });
           } catch (err) {
+            console.error(`[coach] tool=${block.name} ERROR:`, err);
             results.push({
               type: "tool_result",
               tool_use_id: block.id,
