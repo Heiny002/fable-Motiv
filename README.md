@@ -49,3 +49,4 @@ must match the one in the pg_cron job definition.
 
 > iOS note: web push requires the app to be installed to the Home Screen
 > (Share → Add to Home Screen) on iOS 16.4+.
+
