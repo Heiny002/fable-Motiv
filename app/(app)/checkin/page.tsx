@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import CheckInForm from "@/components/CheckInForm";
 import { getCurrentUser } from "@/lib/auth";
 import { computeStreak, recentCheckIns } from "@/lib/data";
@@ -5,7 +6,8 @@ import { computeStreak, recentCheckIns } from "@/lib/data";
 export const dynamic = "force-dynamic";
 
 export default async function CheckInPage() {
-  const user = (await getCurrentUser())!;
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
   const checkIns = await recentCheckIns(user.id);
   const streak = computeStreak(checkIns, user.timezone);
   const today = new Date().toLocaleDateString("en-CA", { timeZone: user.timezone });

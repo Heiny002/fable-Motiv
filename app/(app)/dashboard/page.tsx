@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import GoalCard from "@/components/GoalCard";
 import { getCurrentUser } from "@/lib/auth";
 import { computeStreak, listGoalsWithPlans, recentCheckIns } from "@/lib/data";
@@ -6,7 +7,8 @@ import { computeStreak, listGoalsWithPlans, recentCheckIns } from "@/lib/data";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const user = (await getCurrentUser())!;
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
   const [goals, checkIns] = await Promise.all([
     listGoalsWithPlans(user.id),
     recentCheckIns(user.id),

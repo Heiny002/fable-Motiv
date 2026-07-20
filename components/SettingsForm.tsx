@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CoachStyle, PublicUser } from "@/lib/types";
 
 const STYLES: Array<{ id: CoachStyle; label: string; blurb: string; emoji: string }> = [
@@ -30,6 +30,35 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
   const [pushState, setPushState] = useState<"idle" | "on" | "unsupported" | "denied" | "error">(
     "idle"
   );
+
+  // Reflect the *actual* notification state on load (the button used to always
+  // reappear as "Enable" after a refresh). Self-heal: if the browser already has
+  // a subscription, re-register it with the server so it can't drift out of sync.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setPushState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushState("denied");
+      return;
+    }
+    if (Notification.permission !== "granted") return; // stay "idle" → shows Enable
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then(async (sub) => {
+        if (!sub) return;
+        setPushState("on");
+        const json = sub.toJSON();
+        await fetch("/api/v1/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+        }).catch(() => {});
+      })
+      .catch(() => {});
+  }, []);
 
   async function save(patch: Record<string, unknown>) {
     setSaved(false);
