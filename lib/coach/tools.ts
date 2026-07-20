@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import {
+  addPlanItems,
   cancelEvent,
   createGoal,
   createScheduledEvent,
@@ -30,7 +31,7 @@ export const coachTools: Anthropic.Tool[] = [
   {
     name: "set_master_plan",
     description:
-      "Store or fully replace the agreed Master Plan for a goal: a summary plus an ordered list of milestones and tasks. Call only after the user has agreed to the plan.",
+      "Store the INITIAL Master Plan for a goal, or do a full agreed re-plan: a summary plus an ordered list of milestones and tasks. WARNING: this REPLACES every existing plan item and RESETS all completion. For adding a few items or capturing new specifics, use add_plan_items instead; for checking off or editing one item, use update_plan_item.",
     input_schema: {
       type: "object",
       properties: {
@@ -51,6 +52,31 @@ export const coachTools: Anthropic.Tool[] = [
         },
       },
       required: ["goal_id", "summary", "items"],
+    },
+  },
+  {
+    name: "add_plan_items",
+    description:
+      "Append one or more NEW milestones/tasks to a goal's existing plan WITHOUT disturbing current items or their completion. Use this to capture concrete specifics the user commits to (e.g. locking in a must-have feature list) or newly-agreed steps. This is the safe way to record details from a conversation onto the plan.",
+    input_schema: {
+      type: "object",
+      properties: {
+        goal_id: { type: "string" },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["milestone", "task"] },
+              title: { type: "string" },
+              detail: { type: "string" },
+              due_date: { type: "string", description: "YYYY-MM-DD, optional" },
+            },
+            required: ["kind", "title"],
+          },
+        },
+      },
+      required: ["goal_id", "items"],
     },
   },
   {
@@ -182,6 +208,17 @@ export async function executeCoachTool(
         items.map((i) => ({ kind: i.kind, title: i.title, detail: i.detail ?? "", due_date: i.due_date ?? null }))
       );
       return { result: JSON.stringify({ saved_items: saved.length }), mutated: true };
+    }
+    case "add_plan_items": {
+      const items = (input.items as Array<{ kind: "milestone" | "task"; title: string; detail?: string; due_date?: string }>) ?? [];
+      if (items.length === 0) {
+        return { result: JSON.stringify({ error: "items must be a non-empty array" }), mutated: false };
+      }
+      const added = await addPlanItems(
+        String(input.goal_id),
+        items.map((i) => ({ kind: i.kind, title: i.title, detail: i.detail ?? "", due_date: i.due_date ?? null }))
+      );
+      return { result: JSON.stringify({ added_items: added.length }), mutated: true };
     }
     case "update_plan_item": {
       const patch: Record<string, unknown> = {};

@@ -151,6 +151,40 @@ export async function replacePlanItems(
   );
 }
 
+/** Append new items to a goal's plan without touching existing items or their completion. */
+export async function addPlanItems(
+  goalId: string,
+  items: Array<{ kind: "milestone" | "task"; title: string; detail?: string; due_date?: string | null }>
+): Promise<PlanItem[]> {
+  const client = db();
+  const existing = unwrap(
+    await client
+      .from("plan_items")
+      .select("position")
+      .eq("goal_id", goalId)
+      .order("position", { ascending: false })
+      .limit(1)
+      .returns<Array<{ position: number }>>()
+  );
+  const start = existing.length ? existing[0].position + 1 : 0;
+  return unwrap(
+    await client
+      .from("plan_items")
+      .insert(
+        items.map((item, i) => ({
+          kind: item.kind,
+          title: item.title,
+          detail: item.detail ?? "",
+          due_date: item.due_date ?? null,
+          goal_id: goalId,
+          position: start + i,
+        }))
+      )
+      .select("*")
+      .returns<PlanItem[]>()
+  );
+}
+
 export async function updatePlanItem(
   userId: string,
   itemId: string,
