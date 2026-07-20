@@ -11,13 +11,25 @@ const STYLES: Array<{ id: CoachStyle; label: string; blurb: string; emoji: strin
   { id: "drill_sergeant", label: "Drill Sergeant", blurb: "Intense. Blunt. Relentless.", emoji: "🪖" },
 ];
 
+// iOS Safari requires the VAPID key as a Uint8Array, not a base64 string.
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const normalized = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(normalized);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
 export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vapidKey: string }) {
   const router = useRouter();
   const [style, setStyle] = useState<CoachStyle>(user.coach_style);
   const [profanity, setProfanity] = useState(user.allow_profanity);
   const [hour, setHour] = useState(user.checkin_hour);
   const [saved, setSaved] = useState(false);
-  const [pushState, setPushState] = useState<"idle" | "on" | "unsupported" | "denied">("idle");
+  const [pushState, setPushState] = useState<"idle" | "on" | "unsupported" | "denied" | "error">(
+    "idle"
+  );
 
   async function save(patch: Record<string, unknown>) {
     setSaved(false);
@@ -43,20 +55,25 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
       setPushState("denied");
       return;
     }
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: vapidKey,
-    });
-    const json = subscription.toJSON();
-    await fetch("/api/v1/push/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
-    });
-    setPushState("on");
-    // Sync the browser timezone so scheduled pushes arrive at the right local hour.
-    save({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, checkin_hour: hour });
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
+      });
+      const json = subscription.toJSON();
+      const res = await fetch("/api/v1/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setPushState("on");
+      // Sync the browser timezone so scheduled pushes arrive at the right local hour.
+      save({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, checkin_hour: hour });
+    } catch {
+      setPushState("error");
+    }
   }
 
   async function logout() {
@@ -146,7 +163,9 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
                 ? "Permission denied — enable in browser settings"
                 : pushState === "unsupported"
                   ? "Push not supported here"
-                  : "Enable push notifications"}
+                  : pushState === "error"
+                    ? "Couldn't enable — install to Home Screen first, then retry"
+                    : "Enable push notifications"}
           </button>
           <p className="mt-2 text-[11px] leading-snug text-slate-400">
             On iPhone: add Motiv.ai to your Home Screen first (Share → Add to Home Screen), then enable
