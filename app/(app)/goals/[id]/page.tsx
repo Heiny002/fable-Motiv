@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import PlanView from "@/components/PlanView";
 import { getCurrentUser } from "@/lib/auth";
 import { getGoal } from "@/lib/data";
@@ -7,7 +7,8 @@ import { getGoal } from "@/lib/data";
 export const dynamic = "force-dynamic";
 
 export default async function GoalPage({ params }: { params: { id: string } }) {
-  const user = (await getCurrentUser())!;
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
   const goal = await getGoal(user.id, params.id);
   if (!goal) notFound();
 

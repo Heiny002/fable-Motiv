@@ -131,12 +131,12 @@ export const coachTools: Anthropic.Tool[] = [
   {
     name: "schedule_event",
     description:
-      "Schedule a later check-in or reminder (hours or days out) — e.g. following up on a commitment the user made. Provide EITHER in_minutes (relative) OR fire_at (absolute ISO 8601). Prefer in_minutes for anything relative so timezones stay correct.",
+      "Schedule a check-in, reminder, or nudge to reach the user at a specific later moment — ANY future time from one minute to many days out (e.g. 'check in with me in a minute', 'remind me tonight', 'follow up after my Thursday workout'). Use this any time the user wants you to come back to them later and it isn't a timed in-session exercise. Provide EITHER in_minutes (relative) OR fire_at (absolute ISO 8601). Prefer in_minutes for anything relative so timezones stay correct.",
     input_schema: {
       type: "object",
       properties: {
         label: { type: "string", description: "Short name for the check-in" },
-        in_minutes: { type: "number", description: "Fire this many minutes from now" },
+        in_minutes: { type: "number", description: "Fire this many minutes from now (can be 1)" },
         fire_at: { type: "string", description: "Absolute time, ISO 8601 (only if not using in_minutes)" },
         summary: { type: "string", description: "One-line description shown when the user taps the clock" },
         debrief_prompt: { type: "string", description: "What you intend to say/ask when it fires" },
