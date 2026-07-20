@@ -38,9 +38,14 @@ Database schema lives in Supabase (project `motiv-ai`); the initial migration is
 ## Deployment (Vercel)
 
 The project deploys as a standard Next.js app. Set the env vars above in
-Project → Settings → Environment Variables. `vercel.json` registers an hourly
-cron that pings users whose local time matches their chosen check-in hour
-(guarded by `CRON_SECRET`).
+Project → Settings → Environment Variables.
+
+Check-in reminders are scheduled by **Supabase `pg_cron`** (job
+`motiv-hourly-checkin-reminders`), which calls `GET /api/cron/checkins` hourly
+with a `Bearer CRON_SECRET` header — the endpoint pings users whose local time
+matches their chosen check-in hour. (Vercel's own cron is not used because
+Hobby-plan crons are limited to daily runs.) The `CRON_SECRET` value in Vercel
+must match the one in the pg_cron job definition.
 
 > iOS note: web push requires the app to be installed to the Home Screen
 > (Share → Add to Home Screen) on iOS 16.4+.
