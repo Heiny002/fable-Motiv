@@ -288,7 +288,7 @@ export async function saveMemory(input: {
   return unwrap(await db().from("memories").insert(input).select("*").single<Memory>());
 }
 
-export async function listMemories(userId: string, limit = 50): Promise<Memory[]> {
+export async function listMemories(userId: string, limit = 200): Promise<Memory[]> {
   return unwrap(
     await db()
       .from("memories")
@@ -298,6 +298,11 @@ export async function listMemories(userId: string, limit = 50): Promise<Memory[]
       .limit(limit)
       .returns<Memory[]>()
   );
+}
+
+export async function deleteMemory(userId: string, id: string): Promise<void> {
+  const res = await db().from("memories").delete().eq("id", id).eq("user_id", userId);
+  if (res.error) throw new Error(res.error.message);
 }
 
 // ---------- push subscriptions ----------
