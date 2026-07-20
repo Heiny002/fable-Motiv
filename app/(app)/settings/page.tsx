@@ -1,5 +1,5 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import MemoryList from "@/components/MemoryList";
 import SettingsForm from "@/components/SettingsForm";
 import { getCurrentUser } from "@/lib/auth";
 import { listMemories } from "@/lib/data";
@@ -17,7 +17,22 @@ export default async function SettingsPage() {
         <p className="text-sm text-slate-500">{user.email}</p>
       </div>
       <SettingsForm user={user} vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""} />
-      <MemoryList memories={memories} />
+
+      <Link
+        href="/memory"
+        className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm active:scale-[0.99]"
+      >
+        <span className="flex items-center gap-3">
+          <span className="text-2xl">🧠</span>
+          <span>
+            <span className="block text-[15px] font-semibold">What Motiv remembers</span>
+            <span className="block text-xs text-slate-500">
+              {memories.length} saved {memories.length === 1 ? "memory" : "memories"} · view &amp; manage
+            </span>
+          </span>
+        </span>
+        <span className="text-slate-300">›</span>
+      </Link>
     </main>
   );
 }
