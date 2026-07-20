@@ -1,0 +1,23 @@
+{
+  "name": "Motiv.ai — AI Goal Coach",
+  "short_name": "Motiv.ai",
+  "description": "Set goals, build a real plan with your AI coach, and get held accountable every day.",
+  "start_url": "/chat",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1b61f5",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

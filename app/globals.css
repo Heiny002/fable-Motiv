@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* iOS safe areas for the bottom tab bar */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

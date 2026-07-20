@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import { prisma } from "./db";
+import { findUserById } from "./data";
 
 const COOKIE_NAME = "motiv_session";
 const SESSION_DAYS = 30;
@@ -45,10 +45,7 @@ export async function getSessionUserId(): Promise<string | null> {
 export async function getCurrentUser() {
   const userId = await getSessionUserId();
   if (!userId) return null;
-  return prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, name: true, coachStyle: true, createdAt: true },
-  });
+  return findUserById(userId);
 }
 
 export async function requireUser() {
