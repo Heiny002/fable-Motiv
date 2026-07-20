@@ -11,6 +11,7 @@ Mobile-first PWA built with Next.js 14, Supabase Postgres, and Claude (`claude-o
 - **4 coach personalities** (gentle / supportive / challenging / drill sergeant) with an opt-in profanity toggle.
 - **Multiple goals** with a designated focus goal.
 - **Daily check-ins** — mood + note, personalized coach reply, streak tracking, and a scheduled push-notification reminder at your chosen hour.
+- **Timers & smart scheduled check-ins** — the coach can start short in-session timers (e.g. a 5-minute visualization) or schedule later follow-ups. A live countdown clock appears in chat (tap it for details); when a timer ends the coach debriefs automatically — instantly if the app is open, via push if it isn't.
 - **Coach-drafted social posts** for Instagram / X / LinkedIn (copy or native share sheet).
 - **PWA** — installable to a phone home screen, offline app shell, web push.
 
@@ -40,12 +41,23 @@ Database schema lives in Supabase (project `motiv-ai`); the initial migration is
 The project deploys as a standard Next.js app. Set the env vars above in
 Project → Settings → Environment Variables.
 
-Check-in reminders are scheduled by **Supabase `pg_cron`** (job
-`motiv-hourly-checkin-reminders`), which calls `GET /api/cron/checkins` hourly
-with a `Bearer CRON_SECRET` header — the endpoint pings users whose local time
-matches their chosen check-in hour. (Vercel's own cron is not used because
-Hobby-plan crons are limited to daily runs.) The `CRON_SECRET` value in Vercel
-must match the one in the pg_cron job definition.
+Scheduling runs on **Supabase `pg_cron`** (Vercel's own cron isn't used because
+Hobby-plan crons are limited to daily runs). Two jobs, both calling their
+endpoint with a `Bearer CRON_SECRET` header:
+
+- `motiv-hourly-checkin-reminders` (`0 * * * *`) → `GET /api/cron/checkins` —
+  pings users whose local time matches their chosen daily check-in hour.
+- `motiv-events-sweeper` (`* * * * *`) → `GET /api/cron/tick` — fires due
+  `scheduled_events` (coach timers, scheduled follow-ups, nudges). One-minute
+  granularity covers everything from a 5-minute timer to a next-week reminder.
+
+The `CRON_SECRET` value in Vercel must match the one in both pg_cron job
+definitions.
+
+**Timer firing** is belt-and-suspenders: when a timer elapses with the app
+open, the client calls `POST /api/v1/events/{id}/fire` for an instant coach
+debrief; `claim_event` makes the transition atomic so the sweeper (the
+locked-phone backstop) can't double-fire.
 
 > iOS note: web push requires the app to be installed to the Home Screen
 > (Share → Add to Home Screen) on iOS 16.4+.

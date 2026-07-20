@@ -1,6 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import {
+  cancelEvent,
   createGoal,
+  createScheduledEvent,
   replacePlanItems,
   saveMemory,
   setFocusGoal,
@@ -105,6 +107,53 @@ export const coachTools: Anthropic.Tool[] = [
       required: ["kind", "content"],
     },
   },
+  {
+    name: "start_timer",
+    description:
+      "Start a short, in-session timed exercise the user does right now (e.g. a 5-minute visualization, a 2-minute breathing reset, a 25-minute focus block). The user sees a live countdown with a tappable clock in chat; when it ends you'll be prompted to debrief. Use for anything on the order of seconds-to-minutes.",
+    input_schema: {
+      type: "object",
+      properties: {
+        label: { type: "string", description: "Short name shown on the timer, e.g. 'Morning visualization'" },
+        duration_minutes: { type: "number", description: "How long the exercise runs, in minutes" },
+        summary: {
+          type: "string",
+          description: "One-line description of what the user is doing, shown when they tap the clock",
+        },
+        debrief_prompt: {
+          type: "string",
+          description: "What you intend to ask/say when the timer ends, e.g. 'Ask what they pictured and how it felt'",
+        },
+      },
+      required: ["label", "duration_minutes", "summary"],
+    },
+  },
+  {
+    name: "schedule_event",
+    description:
+      "Schedule a later check-in or reminder (hours or days out) — e.g. following up on a commitment the user made. Provide EITHER in_minutes (relative) OR fire_at (absolute ISO 8601). Prefer in_minutes for anything relative so timezones stay correct.",
+    input_schema: {
+      type: "object",
+      properties: {
+        label: { type: "string", description: "Short name for the check-in" },
+        in_minutes: { type: "number", description: "Fire this many minutes from now" },
+        fire_at: { type: "string", description: "Absolute time, ISO 8601 (only if not using in_minutes)" },
+        summary: { type: "string", description: "One-line description shown when the user taps the clock" },
+        debrief_prompt: { type: "string", description: "What you intend to say/ask when it fires" },
+        goal_id: { type: "string", description: "Related goal, if any" },
+      },
+      required: ["label"],
+    },
+  },
+  {
+    name: "cancel_event",
+    description: "Cancel a pending timer or scheduled check-in using its <event_id:...> from your context.",
+    input_schema: {
+      type: "object",
+      properties: { event_id: { type: "string" } },
+      required: ["event_id"],
+    },
+  },
 ];
 
 /** Execute a tool call from the Coach. Returns a result string for the model. */
@@ -161,6 +210,57 @@ export async function executeCoachTool(
         content: String(input.content),
       });
       return { result: JSON.stringify({ ok: true }), mutated: false };
+    }
+    case "start_timer": {
+      const minutes = Number(input.duration_minutes);
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        return { result: JSON.stringify({ error: "duration_minutes must be a positive number" }), mutated: false };
+      }
+      const fireAt = new Date(Date.now() + minutes * 60_000).toISOString();
+      const event = await createScheduledEvent({
+        user_id: userId,
+        kind: "timer",
+        label: String(input.label),
+        summary: String(input.summary ?? ""),
+        debrief_prompt: String(input.debrief_prompt ?? ""),
+        fire_at: fireAt,
+      });
+      return {
+        result: JSON.stringify({ event_id: event.id, fires_at: fireAt, note: "Timer started; a countdown is now showing in the user's chat." }),
+        mutated: true,
+      };
+    }
+    case "schedule_event": {
+      let fireAt: string;
+      if (input.in_minutes !== undefined && input.in_minutes !== null) {
+        const minutes = Number(input.in_minutes);
+        if (!Number.isFinite(minutes) || minutes <= 0) {
+          return { result: JSON.stringify({ error: "in_minutes must be a positive number" }), mutated: false };
+        }
+        fireAt = new Date(Date.now() + minutes * 60_000).toISOString();
+      } else if (input.fire_at) {
+        const parsed = new Date(String(input.fire_at));
+        if (Number.isNaN(parsed.getTime())) {
+          return { result: JSON.stringify({ error: "fire_at is not a valid ISO 8601 timestamp" }), mutated: false };
+        }
+        fireAt = parsed.toISOString();
+      } else {
+        return { result: JSON.stringify({ error: "Provide either in_minutes or fire_at" }), mutated: false };
+      }
+      const event = await createScheduledEvent({
+        user_id: userId,
+        goal_id: input.goal_id ? String(input.goal_id) : null,
+        kind: "reminder",
+        label: String(input.label),
+        summary: String(input.summary ?? ""),
+        debrief_prompt: String(input.debrief_prompt ?? ""),
+        fire_at: fireAt,
+      });
+      return { result: JSON.stringify({ event_id: event.id, fires_at: fireAt }), mutated: true };
+    }
+    case "cancel_event": {
+      await cancelEvent(userId, String(input.event_id));
+      return { result: JSON.stringify({ ok: true }), mutated: true };
     }
     default:
       return { result: JSON.stringify({ error: `Unknown tool: ${name}` }), mutated: false };

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import TimerBadge, { type ActiveEvent } from "./TimerBadge";
 
 interface Msg {
   id: string;
@@ -10,18 +11,75 @@ interface Msg {
 
 export default function ChatView({ coachLabel }: { coachLabel: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [events, setEvents] = useState<ActiveEvent[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const bottomRef = useRef<HTMLDivElement>(null);
+  const firedRef = useRef<Set<string>>(new Set());
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const r = await fetch("/api/v1/coach/chat");
+      const d = await r.json();
+      setMessages(d.messages ?? []);
+    } catch {
+      /* keep existing */
+    }
+  }, []);
+
+  const loadEvents = useCallback(async () => {
+    try {
+      const r = await fetch("/api/v1/events");
+      const d = await r.json();
+      setEvents(d.events ?? []);
+    } catch {
+      /* keep existing */
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/v1/coach/chat")
-      .then((r) => r.json())
-      .then((d) => setMessages(d.messages ?? []))
-      .catch(() => {})
-      .finally(() => setLoaded(true));
+    Promise.all([loadHistory(), loadEvents()]).finally(() => setLoaded(true));
+  }, [loadHistory, loadEvents]);
+
+  // Tick a clock once per second for live countdowns.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
   }, []);
+
+  // Fire-on-zero: when a timer elapses and the app is visible, ask the server to
+  // debrief immediately (the cron sweeper is the backstop for the locked-phone case).
+  useEffect(() => {
+    if (busy) return;
+    const due = events.filter(
+      (e) => new Date(e.fire_at).getTime() <= now && !firedRef.current.has(e.id)
+    );
+    if (due.length === 0) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+
+    (async () => {
+      for (const e of due) {
+        firedRef.current.add(e.id);
+        try {
+          await fetch(`/api/v1/events/${e.id}/fire`, { method: "POST" });
+        } catch {
+          /* cron will still fire it */
+        }
+      }
+      await Promise.all([loadHistory(), loadEvents()]);
+    })();
+  }, [now, events, busy, loadHistory, loadEvents]);
+
+  async function cancelEvent(id: string) {
+    setEvents((list) => list.filter((e) => e.id !== id));
+    try {
+      await fetch(`/api/v1/events/${id}`, { method: "DELETE" });
+    } catch {
+      loadEvents();
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,6 +126,9 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
                 copy[copy.length - 1] = { ...last, content: last.content + event.text };
                 return copy;
               });
+            } else if (event.type === "refresh") {
+              // Coach mutated state (maybe started a timer) — refresh the badge.
+              loadEvents();
             }
           } catch {
             // skip malformed frame
@@ -93,10 +154,11 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
 
   return (
     <div className="flex min-h-[calc(100dvh-5rem)] flex-col">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
         <h1 className="text-lg font-bold">
           Motiv <span className="text-xs font-medium text-slate-400">· {coachLabel}</span>
         </h1>
+        <TimerBadge events={events} now={now} onCancel={cancelEvent} />
       </header>
 
       <div className="flex-1 space-y-3 px-4 py-4">

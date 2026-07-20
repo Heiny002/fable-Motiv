@@ -76,3 +76,19 @@ export interface PushSubscriptionRow {
 export interface GoalWithPlan extends Goal {
   plan_items: PlanItem[];
 }
+
+export type EventKind = "timer" | "reminder" | "nudge";
+
+export interface ScheduledEvent {
+  id: string;
+  user_id: string;
+  goal_id: string | null;
+  kind: EventKind;
+  label: string;
+  summary: string;
+  debrief_prompt: string;
+  fire_at: string;
+  status: "pending" | "fired" | "cancelled";
+  created_at: string;
+  fired_at: string | null;
+}
