@@ -15,21 +15,34 @@ function ensureConfigured(): boolean {
 
 export async function sendPushToUser(
   userId: string,
-  payload: { title: string; body: string; url?: string }
+  payload: { title: string; body: string; url?: string; badge?: number }
 ): Promise<number> {
-  if (!ensureConfigured()) return 0;
+  if (!ensureConfigured()) {
+    console.warn("[push] VAPID not configured — skipping send");
+    return 0;
+  }
   const subs = await listPushSubscriptions(userId);
+  console.log(`[push] user=${userId} subscriptions=${subs.length}`);
   let sent = 0;
   await Promise.all(
     subs.map(async (sub) => {
+      const host = (() => {
+        try {
+          return new URL(sub.endpoint).host;
+        } catch {
+          return "?";
+        }
+      })();
       try {
-        await webpush.sendNotification(
+        const res = await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           JSON.stringify(payload)
         );
+        console.log(`[push] sent host=${host} status=${res.statusCode}`);
         sent += 1;
       } catch (err: unknown) {
         const status = (err as { statusCode?: number }).statusCode;
+        console.error(`[push] FAILED host=${host} status=${status ?? "?"}`);
         if (status === 404 || status === 410) await deletePushSubscription(sub.endpoint);
       }
     })
