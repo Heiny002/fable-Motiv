@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   addMessage,
   computeStreak,
+  listActiveEvents,
   listGoalsWithPlans,
   listMemories,
   recentCheckIns,
@@ -46,10 +47,11 @@ export async function* coachTurn(
     return;
   }
 
-  const [goals, memories, checkIns, history] = await Promise.all([
+  const [goals, memories, checkIns, events, history] = await Promise.all([
     listGoalsWithPlans(user.id),
     listMemories(user.id),
     recentCheckIns(user.id),
+    listActiveEvents(user.id),
     recentMessages(user.id),
   ]);
 
@@ -58,6 +60,7 @@ export async function* coachTurn(
     goals,
     memories,
     checkIns,
+    events,
     streak: computeStreak(checkIns, user.timezone),
   });
 

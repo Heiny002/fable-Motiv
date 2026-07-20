@@ -2,11 +2,13 @@ import { db } from "./supabase";
 import type {
   ChatMessage,
   CheckIn,
+  EventKind,
   Goal,
   GoalWithPlan,
   Memory,
   PlanItem,
   PublicUser,
+  ScheduledEvent,
   User,
 } from "./types";
 
@@ -287,6 +289,86 @@ export async function listPushSubscriptions(userId: string) {
 
 export async function deletePushSubscription(endpoint: string): Promise<void> {
   await db().from("push_subscriptions").delete().eq("endpoint", endpoint);
+}
+
+// ---------- scheduled events (timers / reminders / nudges) ----------
+
+export async function createScheduledEvent(input: {
+  user_id: string;
+  goal_id?: string | null;
+  kind: EventKind;
+  label: string;
+  summary?: string;
+  debrief_prompt?: string;
+  fire_at: string;
+}): Promise<ScheduledEvent> {
+  return unwrap(
+    await db().from("scheduled_events").insert(input).select("*").single<ScheduledEvent>()
+  );
+}
+
+/** Pending events for a user, soonest first — powers the chat timer badge. */
+export async function listActiveEvents(userId: string): Promise<ScheduledEvent[]> {
+  return unwrap(
+    await db()
+      .from("scheduled_events")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .order("fire_at", { ascending: true })
+      .returns<ScheduledEvent[]>()
+  );
+}
+
+export async function getEvent(userId: string, id: string): Promise<ScheduledEvent | null> {
+  const res = await db()
+    .from("scheduled_events")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle<ScheduledEvent>();
+  if (res.error) throw new Error(res.error.message);
+  return res.data;
+}
+
+/** All pending events whose time has arrived (across all users). */
+export async function listDueEvents(nowIso: string): Promise<ScheduledEvent[]> {
+  return unwrap(
+    await db()
+      .from("scheduled_events")
+      .select("*")
+      .eq("status", "pending")
+      .lte("fire_at", nowIso)
+      .order("fire_at", { ascending: true })
+      .returns<ScheduledEvent[]>()
+  );
+}
+
+/**
+ * Atomically claim a pending event by flipping it to 'fired'. Returns the row
+ * if this caller won the transition, or null if it was already claimed —
+ * so the cron sweeper and the client's fire-on-zero can't double-fire.
+ */
+export async function claimEvent(id: string): Promise<ScheduledEvent | null> {
+  const res = await db()
+    .from("scheduled_events")
+    .update({ status: "fired", fired_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("*")
+    .maybeSingle<ScheduledEvent>();
+  if (res.error) throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function cancelEvent(userId: string, id: string): Promise<void> {
+  const res = await db()
+    .from("scheduled_events")
+    .update({ status: "cancelled" })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .eq("status", "pending");
+  if (res.error) throw new Error(res.error.message);
 }
 
 export async function usersForCheckinHour(utcNow: Date): Promise<PublicUser[]> {

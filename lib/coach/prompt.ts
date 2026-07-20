@@ -1,4 +1,4 @@
-import type { CheckIn, CoachStyle, GoalWithPlan, Memory, PublicUser } from "../types";
+import type { CheckIn, CoachStyle, GoalWithPlan, Memory, PublicUser, ScheduledEvent } from "../types";
 
 export const PERSONALITIES: Record<CoachStyle, { label: string; voice: string }> = {
   gentle: {
@@ -46,21 +46,44 @@ function formatGoals(goals: GoalWithPlan[]): string {
     .join("\n");
 }
 
+function formatEvents(events: ScheduledEvent[], timezone: string): string {
+  if (events.length === 0) return "(none active)";
+  return events
+    .map((e) => {
+      const when = new Date(e.fire_at).toLocaleString("en-US", {
+        timeZone: timezone,
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return `- [${e.kind}] "${e.label}" fires ${when} <event_id:${e.id}>${e.summary ? ` — ${e.summary}` : ""}`;
+    })
+    .join("\n");
+}
+
 export function buildSystemPrompt(input: {
   user: PublicUser;
   goals: GoalWithPlan[];
   memories: Memory[];
   checkIns: CheckIn[];
+  events: ScheduledEvent[];
   streak: number;
 }): string {
-  const { user, goals, memories, checkIns, streak } = input;
+  const { user, goals, memories, checkIns, events, streak } = input;
   const personality = PERSONALITIES[user.coach_style] ?? PERSONALITIES.supportive;
-  const today = new Date().toLocaleDateString("en-US", {
+  const now = new Date();
+  const today = now.toLocaleDateString("en-US", {
     timeZone: user.timezone,
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+  });
+  const nowLocal = now.toLocaleString("en-US", {
+    timeZone: user.timezone,
+    hour: "numeric",
+    minute: "2-digit",
   });
 
   const recentCheckins =
@@ -93,15 +116,24 @@ When the user wants to set a new goal:
 - Adjust intensity dynamically: if they're slipping, lean into your personality's way of re-engaging; if they're crushing it, raise the bar.
 - Keep responses mobile-friendly: short paragraphs, no giant lists, no markdown headers. This is a chat, not a document.
 
+# Timers & scheduled check-ins
+- For a short exercise the user does right now (visualization, breathing, a focus block), call start_timer with a duration. They'll see a live countdown clock in the chat, and when it ends you'll be brought back to debrief — so end your message by telling them you'll check in when the timer's up.
+- For a later follow-up (hours or days out — "I'll check in after your Thursday workout"), call schedule_event. Use in_minutes for anything relative.
+- When a timer or scheduled check-in fires, you'll open that moment — debrief specifically about that exact thing, don't restart from scratch.
+- Don't stack redundant timers; if one is already active for the same thing, reference it instead of creating another. Use cancel_event to remove one the user no longer wants.
+
 # Boundaries
 - You are a motivational goal coach, not a therapist or doctor. For medical, mental-health, or crisis topics, be kind, drop the persona intensity, and encourage professional help.
 - Never invent progress data. Only reference what's in the context below.
 
 # Context
-Today is ${today}. The user's check-in streak is ${streak} day(s).
+Today is ${today}; the user's local time is about ${nowLocal} (timezone ${user.timezone}). The user's check-in streak is ${streak} day(s).
 
 ## ${user.name}'s goals and plans
 ${formatGoals(goals)}
+
+## Active timers & scheduled check-ins
+${formatEvents(events, user.timezone)}
 
 ## Saved memories about ${user.name}
 ${memoryBlock}
