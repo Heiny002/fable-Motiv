@@ -1,4 +1,12 @@
-import type { CheckIn, CoachStyle, GoalWithPlan, Memory, PublicUser, ScheduledEvent } from "../types";
+import type {
+  CheckIn,
+  CoachStyle,
+  GoalWithPlan,
+  Memory,
+  PowerTask,
+  PublicUser,
+  ScheduledEvent,
+} from "../types";
 
 export const PERSONALITIES: Record<CoachStyle, { label: string; voice: string }> = {
   gentle: {
@@ -62,15 +70,28 @@ function formatEvents(events: ScheduledEvent[], timezone: string): string {
     .join("\n");
 }
 
+function formatPowerList(tasks: PowerTask[]): string {
+  if (tasks.length === 0) return "(not set)";
+  return tasks
+    .map((t) => `  ${t.completed ? "[x]" : "[ ]"} ${t.title} <ptask_id:${t.id}>`)
+    .join("\n");
+}
+
 export function buildSystemPrompt(input: {
   user: PublicUser;
   goals: GoalWithPlan[];
   memories: Memory[];
   checkIns: CheckIn[];
   events: ScheduledEvent[];
+  powerToday: PowerTask[];
+  powerTomorrow: PowerTask[];
+  powerStreak: number;
+  todayStr: string;
   streak: number;
 }): string {
-  const { user, goals, memories, checkIns, events, streak } = input;
+  const { user, goals, memories, checkIns, events, powerToday, powerTomorrow, powerStreak, streak } =
+    input;
+  const powerDone = powerToday.filter((t) => t.completed).length;
   const personality = PERSONALITIES[user.coach_style] ?? PERSONALITIES.supportive;
   const now = new Date();
   const today = now.toLocaleDateString("en-US", {
@@ -125,6 +146,12 @@ The chat transcript is NOT durable storage; only the goal, plan items, and memor
 - **Just act** (then mention it in one line) when it clearly applies to the active goal and is unambiguous — they finished a listed task, they locked a decision, they gave a firm date. Example: "Marked 'confirm Apple Developer account' done. ✓"
 - **Confirm first** when you're unsure the conversation is meant to change the goal — they might be brainstorming rather than deciding, it's vague, or it could belong to a different project. Ask one short question before editing, e.g. "Want me to lock those four in as must-have features on your SousChef plan?" Once they say yes, make the edit. When genuinely torn, prefer asking over guessing.
 
+# Power List — the daily action plan (this is a core ritual)
+The Power List is the user's daily action plan: up to 5 concrete tasks for a single day. Completing 100% of a day's tasks means they "win the day"; the goal is to win every day, or honestly adjust. It's the daily execution layer beneath the multi-week Master Plan.
+- **Evening ritual.** In the evening, run this with the user: (1) review today's Power List — celebrate a full win in your voice, or if they fell short, get honest about why without shame. (2) Build tomorrow's Power List together: propose up to 5 concrete, doable tasks (pull from the current Master Plan milestone where it fits, plus anything time-sensitive), get their feedback, then call set_power_list with day "tomorrow". Keep it realistic — a list they can actually 100%.
+- **During the day.** If the user says they finished a daily task, call complete_power_task for it. If plans change, adjust with set_power_list.
+- Keep lists tight (≤5). More than 5 rarely gets won. If a day is consistently missed, help them right-size it.
+
 # Timers & scheduled check-ins
 - **CRITICAL: The tools are the ONLY way to schedule anything. Your words alone do nothing.** Never tell the user you've set a timer, reminder, alarm, or check-in unless you actually called start_timer or schedule_event in this same turn. If you intend to follow up later, call the tool first, then confirm.
 - The one and only source of truth for what's currently scheduled is the "## Active timers & scheduled check-ins" list in your context above. Do not infer from your earlier chat messages whether something is scheduled — if it's not in that list, it does not exist, so call the tool now even if you feel like you already handled it.
@@ -142,6 +169,12 @@ Today is ${today}; the user's local time is about ${nowLocal} (timezone ${user.t
 
 ## ${user.name}'s goals and plans
 ${formatGoals(goals)}
+
+## Today's Power List (${powerDone}/${powerToday.length} done, win streak ${powerStreak} day(s))
+${formatPowerList(powerToday)}
+
+## Tomorrow's Power List
+${formatPowerList(powerTomorrow)}
 
 ## Active timers & scheduled check-ins
 ${formatEvents(events, user.timezone)}

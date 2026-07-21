@@ -80,6 +80,18 @@ export interface GoalWithPlan extends Goal {
   plan_items: PlanItem[];
 }
 
+export interface PowerTask {
+  id: string;
+  user_id: string;
+  plan_date: string;
+  position: number;
+  title: string;
+  goal_id: string | null;
+  completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+}
+
 export type EventKind = "timer" | "reminder" | "nudge";
 
 export interface ScheduledEvent {

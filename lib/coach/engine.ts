@@ -1,13 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   addMessage,
+  computePowerStreak,
   computeStreak,
+  getPowerTasks,
+  getPowerTasksBetween,
   listActiveEvents,
   listGoalsWithPlans,
   listMemories,
   recentCheckIns,
   recentMessages,
 } from "../data";
+import { userLocalDate } from "../date";
 import type { PublicUser } from "../types";
 import { buildSystemPrompt } from "./prompt";
 import { coachTools, executeCoachTool } from "./tools";
@@ -72,13 +76,19 @@ export async function* coachTurn(
     return;
   }
 
-  const [goals, memories, checkIns, events, history] = await Promise.all([
-    listGoalsWithPlans(user.id),
-    listMemories(user.id),
-    recentCheckIns(user.id),
-    listActiveEvents(user.id),
-    recentMessages(user.id),
-  ]);
+  const todayStr = userLocalDate(user.timezone, 0);
+  const tomorrowStr = userLocalDate(user.timezone, 1);
+  const [goals, memories, checkIns, events, powerToday, powerTomorrow, powerRecent, history] =
+    await Promise.all([
+      listGoalsWithPlans(user.id),
+      listMemories(user.id),
+      recentCheckIns(user.id),
+      listActiveEvents(user.id),
+      getPowerTasks(user.id, todayStr),
+      getPowerTasks(user.id, tomorrowStr),
+      getPowerTasksBetween(user.id, userLocalDate(user.timezone, -14), todayStr),
+      recentMessages(user.id),
+    ]);
 
   const system = buildSystemPrompt({
     user,
@@ -86,6 +96,10 @@ export async function* coachTurn(
     memories,
     checkIns,
     events,
+    powerToday,
+    powerTomorrow,
+    powerStreak: computePowerStreak(powerRecent, todayStr),
+    todayStr,
     streak: computeStreak(checkIns, user.timezone),
   });
 
@@ -168,7 +182,7 @@ export async function* coachTurn(
           try {
             console.log(`[coach] tool=${block.name} input=${JSON.stringify(block.input)}`);
             const outcome = await executeCoachTool(
-              user.id,
+              user,
               block.name,
               block.input as Record<string, unknown>
             );

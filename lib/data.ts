@@ -7,6 +7,7 @@ import type {
   GoalWithPlan,
   Memory,
   PlanItem,
+  PowerTask,
   PublicUser,
   ScheduledEvent,
   User,
@@ -409,6 +410,136 @@ export async function cancelEvent(userId: string, id: string): Promise<void> {
     .eq("user_id", userId)
     .eq("status", "pending");
   if (res.error) throw new Error(res.error.message);
+}
+
+// ---------- power list (daily action plan) ----------
+
+export async function getPowerTasks(userId: string, planDate: string): Promise<PowerTask[]> {
+  return unwrap(
+    await db()
+      .from("power_tasks")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("plan_date", planDate)
+      .order("position", { ascending: true })
+      .returns<PowerTask[]>()
+  );
+}
+
+export async function getPowerTasksBetween(
+  userId: string,
+  fromDate: string,
+  toDate: string
+): Promise<PowerTask[]> {
+  return unwrap(
+    await db()
+      .from("power_tasks")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("plan_date", fromDate)
+      .lte("plan_date", toDate)
+      .order("plan_date", { ascending: true })
+      .order("position", { ascending: true })
+      .returns<PowerTask[]>()
+  );
+}
+
+/** Replace the whole Power List for a given day. */
+export async function setPowerList(
+  userId: string,
+  planDate: string,
+  items: Array<{ title: string; goal_id?: string | null }>
+): Promise<PowerTask[]> {
+  const client = db();
+  const del = await client
+    .from("power_tasks")
+    .delete()
+    .eq("user_id", userId)
+    .eq("plan_date", planDate);
+  if (del.error) throw new Error(del.error.message);
+  if (items.length === 0) return [];
+  return unwrap(
+    await client
+      .from("power_tasks")
+      .insert(
+        items.map((item, i) => ({
+          user_id: userId,
+          plan_date: planDate,
+          position: i,
+          title: item.title,
+          goal_id: item.goal_id ?? null,
+        }))
+      )
+      .select("*")
+      .returns<PowerTask[]>()
+  );
+}
+
+export async function addPowerTask(input: {
+  user_id: string;
+  plan_date: string;
+  title: string;
+  goal_id?: string | null;
+}): Promise<PowerTask> {
+  const existing = await getPowerTasks(input.user_id, input.plan_date);
+  return unwrap(
+    await db()
+      .from("power_tasks")
+      .insert({ ...input, position: existing.length })
+      .select("*")
+      .single<PowerTask>()
+  );
+}
+
+export async function updatePowerTask(
+  userId: string,
+  id: string,
+  patch: { completed?: boolean; title?: string }
+): Promise<PowerTask> {
+  const full: Record<string, unknown> = { ...patch };
+  if (patch.completed !== undefined) {
+    full.completed_at = patch.completed ? new Date().toISOString() : null;
+  }
+  return unwrap(
+    await db()
+      .from("power_tasks")
+      .update(full)
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("*")
+      .single<PowerTask>()
+  );
+}
+
+export async function deletePowerTask(userId: string, id: string): Promise<void> {
+  const res = await db().from("power_tasks").delete().eq("id", id).eq("user_id", userId);
+  if (res.error) throw new Error(res.error.message);
+}
+
+/** Consecutive "won" days (every task complete) ending today or yesterday. Today
+ *  still in progress doesn't break the streak. */
+export function computePowerStreak(tasks: PowerTask[], todayStr: string): number {
+  const byDate = new Map<string, PowerTask[]>();
+  for (const t of tasks) {
+    const list = byDate.get(t.plan_date) ?? [];
+    list.push(t);
+    byDate.set(t.plan_date, list);
+  }
+  const won = (list: PowerTask[] | undefined) =>
+    !!list && list.length > 0 && list.every((t) => t.completed);
+
+  let streak = 0;
+  const cursor = new Date(`${todayStr}T00:00:00`);
+  const todayList = byDate.get(todayStr);
+  // If today isn't won yet, start counting from yesterday (today's not over).
+  if (!won(todayList)) cursor.setDate(cursor.getDate() - 1);
+  for (;;) {
+    const key = cursor.toLocaleDateString("en-CA");
+    if (!won(byDate.get(key))) break;
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
 }
 
 export async function usersForCheckinHour(utcNow: Date): Promise<PublicUser[]> {
