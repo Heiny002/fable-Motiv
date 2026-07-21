@@ -7,9 +7,12 @@ import {
   replacePlanItems,
   saveMemory,
   setFocusGoal,
+  setPowerList,
   updateGoal,
   updatePlanItem,
+  updatePowerTask,
 } from "../data";
+import { userLocalDate } from "../date";
 
 // The Coach -> System command surface (per the Brain/Coach architecture docs),
 // implemented as native tool use instead of the docs' regex command extraction.
@@ -180,14 +183,45 @@ export const coachTools: Anthropic.Tool[] = [
       required: ["event_id"],
     },
   },
+  {
+    name: "set_power_list",
+    description:
+      "Set (replace) the user's Power List — their daily action plan of up to 5 concrete tasks — for today or tomorrow. This is the Daily Action Plan you build with them each evening for the next day. Completing 100% of the day's tasks means they 'win the day'. Keep it to at most 5 focused, concrete tasks, drawn from their current goal milestone where it fits. Replaces any existing list for that day.",
+    input_schema: {
+      type: "object",
+      properties: {
+        day: { type: "string", enum: ["today", "tomorrow"] },
+        tasks: {
+          type: "array",
+          description: "Up to 5 concrete task titles for the day",
+          items: { type: "string" },
+        },
+      },
+      required: ["day", "tasks"],
+    },
+  },
+  {
+    name: "complete_power_task",
+    description:
+      "Mark one of today's Power List tasks complete or incomplete, using its <ptask_id:...> from your context. Use when the user reports doing (or not doing) a daily task.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ptask_id: { type: "string" },
+        completed: { type: "boolean", description: "Defaults to true" },
+      },
+      required: ["ptask_id"],
+    },
+  },
 ];
 
 /** Execute a tool call from the Coach. Returns a result string for the model. */
 export async function executeCoachTool(
-  userId: string,
+  user: { id: string; timezone: string },
   name: string,
   input: Record<string, unknown>
 ): Promise<{ result: string; mutated: boolean }> {
+  const userId = user.id;
   switch (name) {
     case "create_goal": {
       const goal = await createGoal({
@@ -298,6 +332,28 @@ export async function executeCoachTool(
     case "cancel_event": {
       await cancelEvent(userId, String(input.event_id));
       return { result: JSON.stringify({ ok: true }), mutated: true };
+    }
+    case "set_power_list": {
+      const titles = ((input.tasks as unknown[]) ?? [])
+        .map((t) => String(t).trim())
+        .filter((t) => t.length > 0)
+        .slice(0, 5);
+      const planDate = userLocalDate(user.timezone, input.day === "tomorrow" ? 1 : 0);
+      const saved = await setPowerList(
+        userId,
+        planDate,
+        titles.map((title) => ({ title }))
+      );
+      return {
+        result: JSON.stringify({ day: input.day, date: planDate, tasks: saved.length }),
+        mutated: true,
+      };
+    }
+    case "complete_power_task": {
+      const task = await updatePowerTask(userId, String(input.ptask_id), {
+        completed: input.completed === undefined ? true : Boolean(input.completed),
+      });
+      return { result: JSON.stringify({ ok: true, completed: task.completed }), mutated: true };
     }
     default:
       return { result: JSON.stringify({ error: `Unknown tool: ${name}` }), mutated: false };
