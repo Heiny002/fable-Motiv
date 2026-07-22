@@ -312,7 +312,7 @@ export async function saveMemory(input: {
   user_id: string;
   kind: Memory["kind"];
   content: string;
-}): Promise<Memory> {
+}): Promise<{ memory: Memory; created: boolean }> {
   const incoming = normalizeMemory(input.content);
   if (incoming) {
     const existing = unwrap(
@@ -325,9 +325,10 @@ export async function saveMemory(input: {
         .returns<Memory[]>()
     );
     const dup = existing.find((m) => memorySimilarity(normalizeMemory(m.content), incoming) >= 0.82);
-    if (dup) return dup;
+    if (dup) return { memory: dup, created: false };
   }
-  return unwrap(await db().from("memories").insert(input).select("*").single<Memory>());
+  const memory = unwrap(await db().from("memories").insert(input).select("*").single<Memory>());
+  return { memory, created: true };
 }
 
 export async function listMemories(userId: string, limit = 200): Promise<Memory[]> {
