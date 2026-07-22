@@ -126,7 +126,7 @@ export const coachTools: Anthropic.Tool[] = [
   {
     name: "save_memory",
     description:
-      "Save a durable fact about the user for future sessions: biographical (who they are, constraints, schedule), goal (context about a specific goal), or history (past attempts, patterns).",
+      "Save a durable fact about the user that helps you coach them as a whole person across future sessions. Capture what drives their motivation and psychology — not just logistics. Kinds: 'biographical' (who they are: family & relationships, job & career, religion/spirituality & values, health, where they live, constraints, daily schedule); 'goal' (context, motivations, or constraints tied to a specific goal); 'history' (fears & anxieties, past attempts and what happened, recurring patterns, what has motivated or derailed them before). Write ONE concise, specific sentence. Save the deeper 'why' behind a goal, core priorities, identity, and emotional drivers whenever they surface — these matter as much as the facts.",
     input_schema: {
       type: "object",
       properties: {

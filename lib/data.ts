@@ -281,11 +281,52 @@ export function computeStreak(checkIns: CheckIn[], timezone: string): number {
 
 // ---------- memories ----------
 
+/** Normalize memory text for duplicate comparison: lowercase, strip
+ *  punctuation, collapse whitespace. */
+function normalizeMemory(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Token-set Jaccard similarity of two normalized strings (0..1). */
+function memorySimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  const ta = a.split(" ").filter(Boolean);
+  const tb = b.split(" ").filter(Boolean);
+  const sa = Array.from(new Set(ta));
+  const sb = new Set(tb);
+  if (sa.length === 0 || sb.size === 0) return 0;
+  const inter = sa.filter((t) => sb.has(t)).length;
+  return inter / (sa.length + sb.size - inter);
+}
+
+/**
+ * Save a durable memory, skipping near-duplicates. If an existing memory for
+ * the same user is an exact normalized match or ≥ 0.82 token-similar, we keep
+ * the existing row instead of inserting a second copy (returns it unchanged).
+ */
 export async function saveMemory(input: {
   user_id: string;
   kind: Memory["kind"];
   content: string;
 }): Promise<Memory> {
+  const incoming = normalizeMemory(input.content);
+  if (incoming) {
+    const existing = unwrap(
+      await db()
+        .from("memories")
+        .select("*")
+        .eq("user_id", input.user_id)
+        .order("created_at", { ascending: false })
+        .limit(400)
+        .returns<Memory[]>()
+    );
+    const dup = existing.find((m) => memorySimilarity(normalizeMemory(m.content), incoming) >= 0.82);
+    if (dup) return dup;
+  }
   return unwrap(await db().from("memories").insert(input).select("*").single<Memory>());
 }
 
