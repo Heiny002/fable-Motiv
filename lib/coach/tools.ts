@@ -216,11 +216,17 @@ export const coachTools: Anthropic.Tool[] = [
 ];
 
 /** Execute a tool call from the Coach. Returns a result string for the model. */
+export interface ToolOutcome {
+  result: string;
+  mutated: boolean;
+  memory?: { kind: string; content: string; created: boolean };
+}
+
 export async function executeCoachTool(
   user: { id: string; timezone: string },
   name: string,
   input: Record<string, unknown>
-): Promise<{ result: string; mutated: boolean }> {
+): Promise<ToolOutcome> {
   const userId = user.id;
   switch (name) {
     case "create_goal": {
@@ -275,12 +281,16 @@ export async function executeCoachTool(
       return { result: JSON.stringify({ ok: true }), mutated: true };
     }
     case "save_memory": {
-      await saveMemory({
+      const { memory, created } = await saveMemory({
         user_id: userId,
         kind: (input.kind as "biographical" | "goal" | "history") ?? "biographical",
         content: String(input.content),
       });
-      return { result: JSON.stringify({ ok: true }), mutated: false };
+      return {
+        result: JSON.stringify({ ok: true, created }),
+        mutated: false,
+        memory: { kind: memory.kind, content: memory.content, created },
+      };
     }
     case "start_timer": {
       const minutes = Number(input.duration_minutes);
