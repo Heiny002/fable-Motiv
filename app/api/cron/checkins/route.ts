@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     const sent = await sendPushToUser(user.id, {
       title: "Time to check in 🏁",
       body: `${user.name}, your coach is waiting. How did today go?`,
-      url: "/checkin",
+      url: "/today",
     });
     if (sent > 0) notified += 1;
   }

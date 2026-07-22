@@ -1,5 +1,5 @@
 /* Motiv.ai service worker: offline app shell + push notifications. */
-const CACHE = "motiv-shell-v1";
+const CACHE = "motiv-shell-v2";
 const SHELL = ["/", "/manifest.json", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -36,7 +36,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let payload = { title: "Motiv.ai", body: "Your coach is waiting.", url: "/checkin", badge: 1 };
+  let payload = { title: "Motiv.ai", body: "Your coach is waiting.", url: "/today", badge: 1 };
   try {
     payload = { ...payload, ...event.data.json() };
   } catch (e) {
@@ -60,7 +60,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/checkin";
+  const url = (event.notification.data && event.notification.data.url) || "/today";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const client of list) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSpeech } from "@/lib/speech";
 import TimerBadge, { type ActiveEvent } from "./TimerBadge";
 
 interface Msg {
@@ -18,6 +19,7 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
   const [now, setNow] = useState(() => Date.now());
   const bottomRef = useRef<HTMLDivElement>(null);
   const firedRef = useRef<Set<string>>(new Set());
+  const speech = useSpeech();
 
   const loadHistory = useCallback(async () => {
     try {
@@ -149,6 +151,13 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
       });
     } finally {
       setBusy(false);
+      if (speech.autoSpeak) {
+        setMessages((m) => {
+          const last = m[m.length - 1];
+          if (last?.role === "assistant" && last.content) speech.speak(last.content, last.id);
+          return m;
+        });
+      }
     }
   }
 
@@ -158,22 +167,60 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
         <h1 className="text-lg font-bold">
           Motiv <span className="text-xs font-medium text-slate-400">· {coachLabel}</span>
         </h1>
-        <TimerBadge events={events} now={now} onCancel={cancelEvent} />
+        <div className="flex items-center gap-1.5">
+          {speech.supported && (
+            <button
+              onClick={speech.toggleAutoSpeak}
+              className={`rounded-full p-2 ${
+                speech.autoSpeak ? "bg-brand-50 text-brand-600" : "text-slate-400"
+              }`}
+              aria-label={speech.autoSpeak ? "Turn off auto voice" : "Read replies aloud"}
+              title={speech.autoSpeak ? "Auto voice on" : "Auto voice off"}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                {speech.autoSpeak ? (
+                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 00-2.5-4.03v8.06A4.5 4.5 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z" />
+                ) : (
+                  <path d="M3 10v4h4l5 5V5L7 10H3zm16.59 1L22 8.59 20.59 7 18 9.59 15.41 7 14 8.59 16.59 11 14 13.41 15.41 15 18 12.41 20.59 15 22 13.41 19.59 11z" />
+                )}
+              </svg>
+            </button>
+          )}
+          <TimerBadge events={events} now={now} onCancel={cancelEvent} />
+        </div>
       </header>
 
       <div className="flex-1 space-y-3 px-4 py-4">
         {!loaded && <p className="py-10 text-center text-sm text-slate-400">Loading…</p>}
         {messages.map((m) => (
-          <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+          <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex flex-col items-start"}>
             <div
               className={
                 m.role === "user"
-                  ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-brand-600 px-4 py-2.5 text-[15px] text-white"
+                  ? "max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-md bg-brand-600 px-4 py-2.5 text-[15px] text-white"
                   : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-white px-4 py-2.5 text-[15px] text-slate-800 shadow-sm"
               }
             >
               {m.content || (busy ? <span className="animate-pulse">•••</span> : "")}
             </div>
+            {m.role === "assistant" && m.content && speech.supported && (
+              <button
+                onClick={() => speech.speak(m.content, m.id)}
+                className={`mt-1 ml-1 flex items-center gap-1 text-[11px] font-medium ${
+                  speech.speakingId === m.id ? "text-brand-600" : "text-slate-400"
+                }`}
+                aria-label={speech.speakingId === m.id ? "Stop" : "Play aloud"}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  {speech.speakingId === m.id ? (
+                    <path d="M6 6h12v12H6z" />
+                  ) : (
+                    <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 00-2.5-4.03v8.06A4.5 4.5 0 0016.5 12z" />
+                  )}
+                </svg>
+                {speech.speakingId === m.id ? "Stop" : "Listen"}
+              </button>
+            )}
           </div>
         ))}
         <div ref={bottomRef} />

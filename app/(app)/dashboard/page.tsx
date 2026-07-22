@@ -2,18 +2,20 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import GoalCard from "@/components/GoalCard";
 import { getCurrentUser } from "@/lib/auth";
-import { computeStreak, listGoalsWithPlans, recentCheckIns } from "@/lib/data";
+import { computePowerStreak, getPowerTasksBetween, listGoalsWithPlans } from "@/lib/data";
+import { userLocalDate } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const [goals, checkIns] = await Promise.all([
+  const todayStr = userLocalDate(user.timezone, 0);
+  const [goals, powerRecent] = await Promise.all([
     listGoalsWithPlans(user.id),
-    recentCheckIns(user.id),
+    getPowerTasksBetween(user.id, userLocalDate(user.timezone, -30), todayStr),
   ]);
-  const streak = computeStreak(checkIns, user.timezone);
+  const streak = computePowerStreak(powerRecent, todayStr);
   const active = goals.filter((g) => g.status === "active");
   const completed = goals.filter((g) => g.status === "completed");
   const focusFirst = [...active].sort((a, b) => Number(b.is_focus) - Number(a.is_focus));
@@ -28,7 +30,7 @@ export default async function DashboardPage() {
         <div className="rounded-2xl bg-white px-4 py-2 text-center shadow-sm">
           <div className="text-xl font-extrabold text-orange-500">🔥 {streak}</div>
           <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-            day streak
+            win streak
           </div>
         </div>
       </header>
