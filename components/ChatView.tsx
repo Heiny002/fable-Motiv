@@ -6,9 +6,16 @@ import TimerBadge, { type ActiveEvent } from "./TimerBadge";
 
 interface Msg {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "memory";
   content: string;
+  memKind?: string;
 }
+
+const MEM_LABEL: Record<string, string> = {
+  biographical: "About you",
+  goal: "Goal context",
+  history: "Pattern",
+};
 
 export default function ChatView({ coachLabel }: { coachLabel: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -120,12 +127,33 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
           const line = raw.trim();
           if (!line.startsWith("data: ")) continue;
           try {
-            const event = JSON.parse(line.slice(6)) as { type: string; text?: string };
+            const event = JSON.parse(line.slice(6)) as {
+              type: string;
+              text?: string;
+              memory?: { kind: string; content: string };
+            };
             if (event.type === "text" && event.text) {
               setMessages((m) => {
                 const copy = [...m];
                 const last = copy[copy.length - 1];
                 copy[copy.length - 1] = { ...last, content: last.content + event.text };
+                return copy;
+              });
+            } else if (event.type === "memory" && event.memory) {
+              // Live indicator: insert a chip just above the streaming reply.
+              const mem = event.memory;
+              setMessages((m) => {
+                const chip: Msg = {
+                  id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  role: "memory",
+                  content: mem.content,
+                  memKind: mem.kind,
+                };
+                const copy = [...m];
+                const insertAt = copy.length > 0 && copy[copy.length - 1].role === "assistant"
+                  ? copy.length - 1
+                  : copy.length;
+                copy.splice(insertAt, 0, chip);
                 return copy;
               });
             } else if (event.type === "refresh") {
@@ -192,7 +220,18 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
 
       <div className="flex-1 space-y-3 px-4 py-4">
         {!loaded && <p className="py-10 text-center text-sm text-slate-400">Loading…</p>}
-        {messages.map((m) => (
+        {messages.map((m) =>
+          m.role === "memory" ? (
+            <div key={m.id} className="flex justify-center">
+              <div className="flex max-w-[90%] items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-700">
+                <span aria-hidden>📝</span>
+                <span className="font-semibold">
+                  {MEM_LABEL[m.memKind ?? ""] ?? "Remembered"}:
+                </span>
+                <span className="truncate">{m.content}</span>
+              </div>
+            </div>
+          ) : (
           <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex flex-col items-start"}>
             <div
               className={
@@ -222,7 +261,8 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
               </button>
             )}
           </div>
-        ))}
+          )
+        )}
         <div ref={bottomRef} />
       </div>
 

@@ -28,8 +28,9 @@ export const NO_KEY_MESSAGE =
   "I'm not fully awake yet — the app's ANTHROPIC_API_KEY isn't configured, so I can't coach for real. Add the key to your environment (locally in .env, or in Vercel's Environment Variables) and I'll be right here.";
 
 export interface CoachStreamEvent {
-  type: "text" | "refresh" | "done" | "error";
+  type: "text" | "refresh" | "done" | "error" | "memory";
   text?: string;
+  memory?: { kind: string; content: string };
 }
 
 function isToolResultContent(content: unknown): boolean {
@@ -188,6 +189,14 @@ export async function* coachTurn(
             );
             mutated = mutated || outcome.mutated;
             console.log(`[coach] tool=${block.name} result=${outcome.result}`);
+            // Surface a live indicator when the coach records a NEW memory
+            // (deduped saves don't fire — nothing new was stored).
+            if (outcome.memory?.created) {
+              yield {
+                type: "memory",
+                memory: { kind: outcome.memory.kind, content: outcome.memory.content },
+              };
+            }
             results.push({ type: "tool_result", tool_use_id: block.id, content: outcome.result });
           } catch (err) {
             console.error(`[coach] tool=${block.name} ERROR:`, err);
