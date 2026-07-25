@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CoachStyle, PublicUser } from "@/lib/types";
 
 const STYLES: Array<{ id: CoachStyle; label: string; blurb: string; emoji: string }> = [
@@ -31,6 +31,29 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 const TOTAL = 5;
 
+type PushEnv = "ready" | "needs_install" | "unsupported";
+
+/**
+ * Whether this context can actually receive push. iOS only exposes push to a
+ * PWA launched from the Home Screen — in a Safari tab the APIs are missing or
+ * inert, so we tell the user to install first instead of letting them tap a
+ * button that silently does nothing.
+ */
+function detectPushEnv(): PushEnv {
+  if (typeof window === "undefined") return "unsupported";
+  const ua = navigator.userAgent;
+  const isIOS =
+    /iphone|ipad|ipod/i.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS
+  const standalone =
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (isIOS && !standalone) return "needs_install";
+  const hasPush =
+    "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  return hasPush ? "ready" : "unsupported";
+}
+
 export default function WelcomeFlow({
   user,
   vapidKey,
@@ -49,6 +72,9 @@ export default function WelcomeFlow({
     "idle"
   );
   const [finishing, setFinishing] = useState(false);
+  const [pushEnv, setPushEnv] = useState<PushEnv | null>(null);
+
+  useEffect(() => setPushEnv(detectPushEnv()), []);
 
   const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -219,24 +245,49 @@ export default function WelcomeFlow({
               Timed check-ins and daily rituals reach you through notifications. Turn them on so I can
               actually show up for you.
             </p>
+            {pushEnv === "needs_install" && (
+              <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-[13px] font-semibold text-amber-800">
+                  📲 Push not supported here — add Motiv to your Home Screen first
+                </p>
+                <p className="mt-1.5 text-[12px] leading-snug text-amber-700">
+                  On iPhone, notifications only work from the installed app. Tap{" "}
+                  <span className="font-semibold">Share</span> →{" "}
+                  <span className="font-semibold">Add to Home Screen</span>, open Motiv from your Home
+                  Screen, then turn notifications on here or in Settings.
+                </p>
+              </div>
+            )}
+            {pushEnv === "unsupported" && (
+              <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[13px] font-semibold text-slate-700">
+                  Push not supported here
+                </p>
+                <p className="mt-1.5 text-[12px] leading-snug text-slate-500">
+                  This browser can&apos;t receive notifications. Open Motiv in a supported browser, or
+                  on your phone, to turn them on.
+                </p>
+              </div>
+            )}
             <button
               onClick={enablePush}
-              disabled={pushState === "on"}
-              className="w-full rounded-2xl bg-slate-900 py-4 text-sm font-semibold text-white disabled:opacity-60"
+              disabled={pushState === "on" || (!preview && pushEnv !== "ready")}
+              className="w-full rounded-2xl bg-slate-900 py-4 text-sm font-semibold text-white disabled:opacity-40"
             >
               {pushState === "on"
                 ? "Notifications enabled ✓"
                 : pushState === "denied"
                   ? "Permission denied — enable in browser settings"
-                  : pushState === "unsupported"
-                    ? "Not supported here — try from the installed app"
-                    : pushState === "error"
-                      ? "Couldn't enable — add to Home Screen first, then retry"
-                      : "Enable notifications"}
+                  : pushEnv === "needs_install"
+                    ? "Add to Home Screen to enable"
+                    : pushEnv === "unsupported"
+                      ? "Push not supported here"
+                      : pushState === "error"
+                        ? "Couldn't enable — try again from the installed app"
+                        : "Enable notifications"}
             </button>
             <p className="mt-3 text-[12px] leading-snug text-slate-400">
-              On iPhone: add Motiv to your Home Screen (Share → Add to Home Screen), open it from there,
-              then enable. You can always do this later in Settings.
+              You can always turn these on later in Settings.
             </p>
           </div>
         )}
