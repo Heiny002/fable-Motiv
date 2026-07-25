@@ -726,6 +726,41 @@ export async function carryOverIncomplete(
   return carried;
 }
 
+export async function listUsers(): Promise<PublicUser[]> {
+  return unwrap(
+    await db()
+      .from("users")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
+      .returns<PublicUser[]>()
+  );
+}
+
+/** Past days (before `beforeDate`) that are still unresolved — for the pending/auto-fail sweep. */
+export async function listPowerDaysToResolve(userId: string, beforeDate: string): Promise<PowerDay[]> {
+  return unwrap(
+    await db()
+      .from("power_days")
+      .select("*")
+      .eq("user_id", userId)
+      .lt("plan_date", beforeDate)
+      .in("status", ["planned", "pending"])
+      .returns<PowerDay[]>()
+  );
+}
+
+export async function setPowerDayStatus(
+  userId: string,
+  planDate: string,
+  status: PowerDayStatus
+): Promise<void> {
+  const res = await db()
+    .from("power_days")
+    .update({ status })
+    .eq("user_id", userId)
+    .eq("plan_date", planDate);
+  if (res.error) throw new Error(res.error.message);
+}
+
 export async function usersForCheckinHour(utcNow: Date): Promise<PublicUser[]> {
   // Fetch all users, filter by their local hour matching their checkin_hour.
   const users = unwrap(
