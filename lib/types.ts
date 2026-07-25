@@ -11,6 +11,10 @@ export interface User {
   // Power List ritual anchor times, local "HH:MM" (24h). Null until the user sets them.
   bedtime: string | null;
   wake_time: string | null;
+  // Local date each ritual last fired, so the sweeper fires it once per day
+  // even when a run is delayed or repeated.
+  last_evening_ritual: string | null;
+  last_morning_ritual: string | null;
   onboarded: boolean;
   timezone: string;
   created_at: string;
