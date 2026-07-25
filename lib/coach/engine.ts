@@ -104,6 +104,8 @@ export async function* coachTurn(
     powerStreak: computeDayStreak(powerDays, todayStr),
     powerDays,
     todayStatus: todayDay?.status ?? null,
+    powerListNew:
+      powerDays.length === 0 && powerToday.length === 0 && powerTomorrow.length === 0,
     todayStr,
     streak: computeStreak(checkIns, user.timezone),
   });
