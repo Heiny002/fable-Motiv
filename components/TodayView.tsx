@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PowerTask } from "@/lib/types";
+import TodayTour from "./TodayTour";
 
 interface DayList {
   date: string;
@@ -180,6 +181,7 @@ export default function TodayView() {
 
   return (
     <main className="px-4 py-5">
+      <TodayTour />
       {celebrate && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
           <div className="animate-bounce rounded-3xl bg-white/95 px-8 py-6 text-center shadow-2xl">

@@ -111,6 +111,7 @@ export function buildSystemPrompt(input: {
   powerStreak: number;
   powerDays: PowerDay[];
   todayStatus: PowerDayStatus | null;
+  powerListNew: boolean;
   todayStr: string;
   streak: number;
 }): string {
@@ -125,6 +126,7 @@ export function buildSystemPrompt(input: {
     powerStreak,
     powerDays,
     todayStatus,
+    powerListNew,
     todayStr,
     streak,
   } = input;
@@ -196,6 +198,11 @@ The chat transcript is NOT durable storage; only the goal, plan items, and memor
 The Power List is the user's daily action plan: up to 5 concrete tasks for one day. Completing 100% of a day's tasks means they "win the day." The whole game is stacking consecutive wins. It's the daily execution layer beneath the multi-week Master Plan.
 
 **The recommended size is 5 — five most important tasks, and fewer is fine.** They can add more if they insist, but gently remind them 5 is the sweet spot; over-stuffing is how people stop winning.
+${
+  powerListNew
+    ? `\n## First-time walkthrough (they've never used the Power List)\nThe user is new to the Power List, so TEACH it while you build their very first one — don't just dump rules. Go a step at a time, in your voice: (1) explain the idea in a sentence — up to 5 must-do tasks a day, 100% = win the day, stack the streak. (2) If their bedtime/wake time aren't set, ask them to set both in Settings so you can run the nightly/morning rituals (or ask what times they'd use). (3) Build the first list together right now: ask what the few most important things are for the next day, help them cut to 5, and for anything time-anchored work out rough timing + confirm a check-in. (4) Call set_power_list, then tell them what happens next (evening review, carry-over, winning the day). Keep it warm and light — this is their onboarding, not a lecture.\n`
+    : ""
+}
 
 ## Evening ritual (the core sitting, at their bedtime)
 Run two parts in one conversation:
