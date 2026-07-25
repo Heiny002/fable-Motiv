@@ -26,6 +26,8 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
   const [style, setStyle] = useState<CoachStyle>(user.coach_style);
   const [profanity, setProfanity] = useState(user.allow_profanity);
   const [hour, setHour] = useState(user.checkin_hour);
+  const [bedtime, setBedtime] = useState(user.bedtime ?? "");
+  const [wakeTime, setWakeTime] = useState(user.wake_time ?? "");
   const [saved, setSaved] = useState(false);
   const [pushState, setPushState] = useState<"idle" | "on" | "unsupported" | "denied" | "error">(
     "idle"
@@ -200,6 +202,51 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
             On iPhone: add Motiv.ai to your Home Screen first (Share → Add to Home Screen), then enable
             notifications from the installed app.
           </p>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">
+          Power List ritual
+        </h2>
+        <div className="space-y-3 rounded-2xl bg-white p-3.5 shadow-sm">
+          <p className="text-[13px] leading-snug text-slate-500">
+            Set these as close to when you actually get in bed and wake up as possible. Your coach
+            nudges you at bedtime to review today and plan tomorrow, and at wake time to set your
+            intention for the day.
+          </p>
+          <label className="flex items-center justify-between">
+            <span className="text-[15px] font-medium">🌙 Bedtime</span>
+            <input
+              type="time"
+              value={bedtime}
+              onChange={(e) => {
+                const v = e.target.value;
+                setBedtime(v);
+                save({
+                  bedtime: v || null,
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                });
+              }}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="flex items-center justify-between">
+            <span className="text-[15px] font-medium">☀️ Wake time</span>
+            <input
+              type="time"
+              value={wakeTime}
+              onChange={(e) => {
+                const v = e.target.value;
+                setWakeTime(v);
+                save({
+                  wake_time: v || null,
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                });
+              }}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+          </label>
         </div>
       </section>
 

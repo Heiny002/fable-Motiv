@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import GoalCard from "@/components/GoalCard";
 import { getCurrentUser } from "@/lib/auth";
-import { computePowerStreak, getPowerTasksBetween, listGoalsWithPlans } from "@/lib/data";
+import { computeDayStreak, getPowerDaysBetween, listGoalsWithPlans } from "@/lib/data";
 import { userLocalDate } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +11,11 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const todayStr = userLocalDate(user.timezone, 0);
-  const [goals, powerRecent] = await Promise.all([
+  const [goals, powerDays] = await Promise.all([
     listGoalsWithPlans(user.id),
-    getPowerTasksBetween(user.id, userLocalDate(user.timezone, -30), todayStr),
+    getPowerDaysBetween(user.id, userLocalDate(user.timezone, -90), todayStr),
   ]);
-  const streak = computePowerStreak(powerRecent, todayStr);
+  const streak = computeDayStreak(powerDays, todayStr);
   const active = goals.filter((g) => g.status === "active");
   const completed = goals.filter((g) => g.status === "completed");
   const focusFirst = [...active].sort((a, b) => Number(b.is_focus) - Number(a.is_focus));

@@ -7,6 +7,15 @@ import type { PowerTask } from "@/lib/types";
 interface DayList {
   date: string;
   tasks: PowerTask[];
+  status?: string | null;
+}
+
+function fmtTime(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h)) return hhmm;
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
 function fmtDate(iso: string): string {
@@ -115,8 +124,24 @@ export default function TodayView() {
                 >
                   ✓
                 </span>
-                <span className={`text-[15px] ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                  {task.title}
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={`block text-[15px] ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}
+                  >
+                    {task.title}
+                  </span>
+                  {(task.scheduled_time || task.carried_over) && (
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px]">
+                      {task.scheduled_time && (
+                        <span className="text-brand-600">🕑 {fmtTime(task.scheduled_time)}</span>
+                      )}
+                      {task.carried_over && (
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
+                          carried over
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </span>
               </button>
               <button onClick={() => remove(task)} className="px-1 text-slate-300 hover:text-red-500" aria-label="Remove">
@@ -125,26 +150,28 @@ export default function TodayView() {
             </li>
           ))}
         </ul>
-        {tasks.length < 5 && (
-          <div className="mt-2 flex gap-2">
-            <input
-              value={adding}
-              onChange={(e) => setAdding(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && add(day)}
-              placeholder={tasks.length === 0 ? "Add your first task…" : "Add a task…"}
-              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500"
-              maxLength={200}
-            />
-            <button
-              onClick={() => add(day)}
-              disabled={!adding.trim()}
-              className="rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
-            >
-              Add
-            </button>
-          </div>
+        <div className="mt-2 flex gap-2">
+          <input
+            value={adding}
+            onChange={(e) => setAdding(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add(day)}
+            placeholder={tasks.length === 0 ? "Add your first task…" : "Add a task…"}
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500"
+            maxLength={200}
+          />
+          <button
+            onClick={() => add(day)}
+            disabled={!adding.trim()}
+            className="rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            Add
+          </button>
+        </div>
+        {tasks.length >= 5 && (
+          <p className="mt-2 text-center text-[11px] text-amber-600">
+            5 is the recommended max — the fewer, the more winnable. Add more only if you must.
+          </p>
         )}
-        {tasks.length >= 5 && <p className="mt-2 text-center text-[11px] text-slate-400">5 is the max — keep it focused.</p>}
       </>
     );
   }
@@ -175,7 +202,17 @@ export default function TodayView() {
 
       <div className={`mb-4 rounded-2xl p-4 shadow-sm ${won ? "bg-brand-600 text-white" : "bg-white"}`}>
         <div className="flex items-center justify-between text-sm font-semibold">
-          <span>{won ? "🏆 Day won — 100%!" : "Win the day"}</span>
+          <span>
+            {today?.status === "won"
+              ? "🏆 Day won — 100%!"
+              : today?.status === "lost"
+                ? "Day closed — not won"
+                : today?.status === "pending"
+                  ? "⏳ Awaiting review"
+                  : won
+                    ? "🏆 100% — review tonight to lock the win"
+                    : "Win the day"}
+          </span>
           <span className={won ? "text-brand-100" : "text-slate-400"}>
             {done}/{total || 0}
           </span>

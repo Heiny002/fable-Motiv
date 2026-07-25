@@ -8,6 +8,11 @@ export const runtime = "nodejs";
 const schema = z.object({
   completed: z.boolean().optional(),
   title: z.string().min(1).max(200).optional(),
+  scheduled_time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .nullable()
+    .optional(),
 });
 
 export const PATCH = withUser(async (user, req, params) => {
