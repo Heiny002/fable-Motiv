@@ -31,7 +31,15 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 const TOTAL = 5;
 
-export default function WelcomeFlow({ user, vapidKey }: { user: PublicUser; vapidKey: string }) {
+export default function WelcomeFlow({
+  user,
+  vapidKey,
+  preview = false,
+}: {
+  user: PublicUser;
+  vapidKey: string;
+  preview?: boolean;
+}) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [style, setStyle] = useState<CoachStyle>(user.coach_style);
@@ -45,6 +53,7 @@ export default function WelcomeFlow({ user, vapidKey }: { user: PublicUser; vapi
   const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   async function save(patch: Record<string, unknown>) {
+    if (preview) return; // testing preview — never touch the backend
     await fetch("/api/v1/auth/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -57,6 +66,10 @@ export default function WelcomeFlow({ user, vapidKey }: { user: PublicUser; vapi
   }
 
   async function finish() {
+    if (preview) {
+      router.push("/settings");
+      return;
+    }
     setFinishing(true);
     await save({ onboarded: true, timezone: tz() });
     router.push("/chat");
@@ -64,6 +77,11 @@ export default function WelcomeFlow({ user, vapidKey }: { user: PublicUser; vapi
   }
 
   async function enablePush() {
+    if (preview) {
+      // Show the success state without subscribing or saving anything.
+      setPushState("on");
+      return;
+    }
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window) || !vapidKey) {
       setPushState("unsupported");
       return;
@@ -107,9 +125,15 @@ export default function WelcomeFlow({ user, vapidKey }: { user: PublicUser; vapi
           ))}
         </div>
         <button onClick={finish} disabled={finishing} className="text-sm font-medium text-slate-400">
-          Skip
+          {preview ? "Close" : "Skip"}
         </button>
       </div>
+
+      {preview && (
+        <div className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-center text-[12px] font-medium text-amber-700">
+          👀 Preview mode — nothing you tap here is saved
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col">
         {step === 0 && (
@@ -259,7 +283,7 @@ export default function WelcomeFlow({ user, vapidKey }: { user: PublicUser; vapi
             disabled={finishing}
             className="rounded-2xl bg-brand-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand-600/30 active:scale-[0.98] disabled:opacity-60"
           >
-            {finishing ? "One sec…" : "Meet your coach →"}
+            {preview ? "Done →" : finishing ? "One sec…" : "Meet your coach →"}
           </button>
         )}
       </div>

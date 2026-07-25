@@ -6,6 +6,9 @@ import { listMemories } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
+// Admin-only tools (e.g. onboarding preview) are gated to this account.
+const ADMIN_EMAIL = "jimheiniger@yahoo.com";
+
 export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -33,6 +36,24 @@ export default async function SettingsPage() {
         </span>
         <span className="text-slate-300">›</span>
       </Link>
+
+      {user.email === ADMIN_EMAIL && (
+        <Link
+          href="/welcome?preview=1"
+          className="flex items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-white p-4 active:scale-[0.99]"
+        >
+          <span className="flex items-center gap-3">
+            <span className="text-2xl">🧪</span>
+            <span>
+              <span className="block text-[15px] font-semibold">Preview onboarding</span>
+              <span className="block text-xs text-slate-500">
+                Walk the new-user flow · admin, nothing saves
+              </span>
+            </span>
+          </span>
+          <span className="text-slate-300">›</span>
+        </Link>
+      )}
     </main>
   );
 }
