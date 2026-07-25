@@ -5,6 +5,7 @@ import {
   listPowerDaysToResolve,
   listUsers,
   setPowerDayStatus,
+  updateUser,
 } from "@/lib/data";
 import { userLocalDate } from "@/lib/date";
 import { fireRitual } from "@/lib/coach/rituals";
@@ -12,8 +13,8 @@ import { fireRitual } from "@/lib/coach/rituals";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/** Local wall-clock ("HH:MM" and hour) for a user's timezone. */
-function localClock(tz: string): { hm: string; hour: number } | null {
+/** Local wall-clock ("HH:MM", hour, minutes-since-midnight) for a user's timezone. */
+function localClock(tz: string): { hm: string; hour: number; minutes: number } | null {
   try {
     const hm = new Intl.DateTimeFormat("en-GB", {
       timeZone: tz,
@@ -21,10 +22,41 @@ function localClock(tz: string): { hm: string; hour: number } | null {
       minute: "2-digit",
       hour12: false,
     }).format(new Date());
-    return { hm, hour: parseInt(hm.slice(0, 2), 10) };
+    const hour = parseInt(hm.slice(0, 2), 10);
+    const minute = parseInt(hm.slice(3, 5), 10);
+    return { hm, hour, minutes: hour * 60 + minute };
   } catch {
     return null;
   }
+}
+
+function toMinutes(hhmm: string): number | null {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
+  return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+}
+
+// How late a ritual may still fire after its scheduled time. Absorbs a delayed
+// or dropped sweeper run without delivering a bedtime nudge the next afternoon.
+const CATCH_UP_MINUTES = 120;
+
+/**
+ * A ritual is due when the user's local time has reached its scheduled time,
+ * we're still inside the catch-up window, and it hasn't already fired today.
+ * The date ledger makes this idempotent: repeated or retried sweeper runs in
+ * the same local day fire at most once.
+ */
+function ritualDue(
+  scheduled: string | null,
+  lastFiredDate: string | null,
+  clock: { minutes: number },
+  todayStr: string
+): boolean {
+  if (!scheduled) return false;
+  if (lastFiredDate === todayStr) return false;
+  const target = toMinutes(scheduled);
+  if (target === null) return false;
+  const elapsed = clock.minutes - target;
+  return elapsed >= 0 && elapsed <= CATCH_UP_MINUTES;
 }
 
 // Runs every minute via Supabase pg_cron. Drives the Power List rituals:
@@ -69,8 +101,10 @@ export async function GET(req: Request) {
     }
 
     // --- Evening nudge (bedtime): review today + plan tomorrow. ---
-    if (user.bedtime && user.bedtime === clock.hm) {
+    if (ritualDue(user.bedtime, user.last_evening_ritual, clock, todayStr)) {
       try {
+        // Claim the day BEFORE sending so a concurrent run can't double-fire.
+        await updateUser(user.id, { last_evening_ritual: todayStr });
         await fireRitual(user, "evening");
         evening += 1;
       } catch (err) {
@@ -80,8 +114,9 @@ export async function GET(req: Request) {
 
     // --- Morning nudge (wake time): intention + safety-net. Auto-carry
     // yesterday's unfinished tasks only if today hasn't been planned. ---
-    if (user.wake_time && user.wake_time === clock.hm) {
+    if (ritualDue(user.wake_time, user.last_morning_ritual, clock, todayStr)) {
       try {
+        await updateUser(user.id, { last_morning_ritual: todayStr });
         const todayTasks = await getPowerTasks(user.id, todayStr);
         if (todayTasks.length === 0) {
           await carryOverIncomplete(user.id, yesterdayStr, todayStr);

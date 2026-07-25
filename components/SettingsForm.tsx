@@ -32,6 +32,8 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
   const [pushState, setPushState] = useState<"idle" | "on" | "unsupported" | "denied" | "error">(
     "idle"
   );
+  const [testState, setTestState] = useState<"idle" | "sending" | "done">("idle");
+  const [testResult, setTestResult] = useState("");
 
   // Reflect the *actual* notification state on load (the button used to always
   // reappear as "Enable" after a refresh). Self-heal: if the browser already has
@@ -104,6 +106,28 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
       save({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, checkin_hour: hour });
     } catch {
       setPushState("error");
+    }
+  }
+
+  async function sendTest() {
+    setTestState("sending");
+    setTestResult("");
+    try {
+      const res = await fetch("/api/v1/push/test", { method: "POST" });
+      const d = await res.json();
+      if (d.ok) {
+        setTestResult(`Sent to ${d.sent} device${d.sent === 1 ? "" : "s"} — check your phone.`);
+      } else if (d.reason === "no_devices") {
+        setTestResult("No devices registered yet — tap Enable notifications above first.");
+      } else if (d.reason === "not_configured") {
+        setTestResult("Push isn't configured on the server (missing VAPID keys).");
+      } else {
+        setTestResult("Send failed — your subscription may have expired. Re-enable above.");
+      }
+    } catch {
+      setTestResult("Couldn't reach the server — try again.");
+    } finally {
+      setTestState("done");
     }
   }
 
@@ -198,6 +222,16 @@ export default function SettingsForm({ user, vapidKey }: { user: PublicUser; vap
                     ? "Couldn't enable — install to Home Screen first, then retry"
                     : "Enable push notifications"}
           </button>
+          <button
+            onClick={sendTest}
+            disabled={testState === "sending"}
+            className="mt-2 w-full rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-50"
+          >
+            {testState === "sending" ? "Sending…" : "Send a test notification"}
+          </button>
+          {testResult && (
+            <p className="mt-2 text-center text-[12px] font-medium text-slate-600">{testResult}</p>
+          )}
           <p className="mt-2 text-[11px] leading-snug text-slate-400">
             On iPhone: add Motiv.ai to your Home Screen first (Share → Add to Home Screen), then enable
             notifications from the installed app.
