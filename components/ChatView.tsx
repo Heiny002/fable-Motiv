@@ -9,6 +9,7 @@ interface Msg {
   role: "user" | "assistant" | "memory";
   content: string;
   memKind?: string;
+  created_at?: string;
 }
 
 const MEM_LABEL: Record<string, string> = {
@@ -16,6 +17,20 @@ const MEM_LABEL: Record<string, string> = {
   goal: "Goal context",
   history: "Pattern",
 };
+
+function fmtStamp(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  if (sameDay) return time;
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} · ${time}`;
+}
 
 export default function ChatView({ coachLabel }: { coachLabel: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -99,10 +114,11 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
     if (!text || busy) return;
     setInput("");
     setBusy(true);
+    const nowIso = new Date().toISOString();
     setMessages((m) => [
       ...m,
-      { id: `u-${Date.now()}`, role: "user", content: text },
-      { id: `a-${Date.now()}`, role: "assistant", content: "" },
+      { id: `u-${Date.now()}`, role: "user", content: text, created_at: nowIso },
+      { id: `a-${Date.now()}`, role: "assistant", content: "", created_at: nowIso },
     ]);
 
     try {
@@ -242,23 +258,28 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
             >
               {m.content || (busy ? <span className="animate-pulse">•••</span> : "")}
             </div>
-            {m.role === "assistant" && m.content && speech.supported && (
-              <button
-                onClick={() => speech.speak(m.content, m.id)}
-                className={`mt-1 ml-1 flex items-center gap-1 text-[11px] font-medium ${
-                  speech.speakingId === m.id ? "text-brand-600" : "text-slate-400"
-                }`}
-                aria-label={speech.speakingId === m.id ? "Stop" : "Play aloud"}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  {speech.speakingId === m.id ? (
-                    <path d="M6 6h12v12H6z" />
-                  ) : (
-                    <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 00-2.5-4.03v8.06A4.5 4.5 0 0016.5 12z" />
-                  )}
-                </svg>
-                {speech.speakingId === m.id ? "Stop" : "Listen"}
-              </button>
+            {m.role === "assistant" && m.content && (
+              <div className="mt-1 ml-1 flex items-center gap-2.5 text-[11px] text-slate-400">
+                {m.created_at && <span>{fmtStamp(m.created_at)}</span>}
+                {speech.supported && (
+                  <button
+                    onClick={() => speech.speak(m.content, m.id)}
+                    className={`flex items-center gap-1 font-medium ${
+                      speech.speakingId === m.id ? "text-brand-600" : "text-slate-400"
+                    }`}
+                    aria-label={speech.speakingId === m.id ? "Stop" : "Play aloud"}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      {speech.speakingId === m.id ? (
+                        <path d="M6 6h12v12H6z" />
+                      ) : (
+                        <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 00-2.5-4.03v8.06A4.5 4.5 0 0016.5 12z" />
+                      )}
+                    </svg>
+                    {speech.speakingId === m.id ? "Stop" : "Listen"}
+                  </button>
+                )}
+              </div>
             )}
           </div>
           )
