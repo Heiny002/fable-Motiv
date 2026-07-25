@@ -3,6 +3,8 @@ import type {
   CoachStyle,
   GoalWithPlan,
   Memory,
+  PowerDay,
+  PowerDayStatus,
   PowerTask,
   PublicUser,
   ScheduledEvent,
@@ -73,8 +75,29 @@ function formatEvents(events: ScheduledEvent[], timezone: string): string {
 function formatPowerList(tasks: PowerTask[]): string {
   if (tasks.length === 0) return "(not set)";
   return tasks
-    .map((t) => `  ${t.completed ? "[x]" : "[ ]"} ${t.title} <ptask_id:${t.id}>`)
+    .map(
+      (t) =>
+        `  ${t.completed ? "[x]" : "[ ]"} ${t.title}${t.scheduled_time ? ` @ ${t.scheduled_time}` : ""}${t.carried_over ? " (carried over)" : ""} <ptask_id:${t.id}>`
+    )
     .join("\n");
+}
+
+/** Recent resolved day results (most recent first) and the current losing streak. */
+function formatDayHistory(days: PowerDay[], todayStr: string): { line: string; consecutiveLosses: number } {
+  const resolved = days
+    .filter((d) => d.plan_date < todayStr && (d.status === "won" || d.status === "lost"))
+    .sort((a, b) => (a.plan_date < b.plan_date ? 1 : -1));
+  let consecutiveLosses = 0;
+  for (const d of resolved) {
+    if (d.status === "lost") consecutiveLosses += 1;
+    else break;
+  }
+  const line =
+    resolved
+      .slice(0, 7)
+      .map((d) => `${d.plan_date}: ${d.status === "won" ? "WON ✅" : "lost ❌"}`)
+      .join("  ·  ") || "(no completed days yet)";
+  return { line, consecutiveLosses };
 }
 
 export function buildSystemPrompt(input: {
@@ -86,11 +109,26 @@ export function buildSystemPrompt(input: {
   powerToday: PowerTask[];
   powerTomorrow: PowerTask[];
   powerStreak: number;
+  powerDays: PowerDay[];
+  todayStatus: PowerDayStatus | null;
   todayStr: string;
   streak: number;
 }): string {
-  const { user, goals, memories, checkIns, events, powerToday, powerTomorrow, powerStreak, streak } =
-    input;
+  const {
+    user,
+    goals,
+    memories,
+    checkIns,
+    events,
+    powerToday,
+    powerTomorrow,
+    powerStreak,
+    powerDays,
+    todayStatus,
+    todayStr,
+    streak,
+  } = input;
+  const dayHistory = formatDayHistory(powerDays, todayStr);
   const powerDone = powerToday.filter((t) => t.completed).length;
   const personality = PERSONALITIES[user.coach_style] ?? PERSONALITIES.supportive;
   const now = new Date();
@@ -155,10 +193,30 @@ The chat transcript is NOT durable storage; only the goal, plan items, and memor
 - **Confirm first** when you're unsure the conversation is meant to change the goal — they might be brainstorming rather than deciding, it's vague, or it could belong to a different project. Ask one short question before editing, e.g. "Want me to lock those four in as must-have features on your SousChef plan?" Once they say yes, make the edit. When genuinely torn, prefer asking over guessing.
 
 # Power List — the daily action plan (this is a core ritual)
-The Power List is the user's daily action plan: up to 5 concrete tasks for a single day. Completing 100% of a day's tasks means they "win the day"; the goal is to win every day, or honestly adjust. It's the daily execution layer beneath the multi-week Master Plan.
-- **Evening ritual.** In the evening, run this with the user: (1) review today's Power List — celebrate a full win in your voice, or if they fell short, get honest about why without shame. (2) Build tomorrow's Power List together: propose up to 5 concrete, doable tasks (pull from the current Master Plan milestone where it fits, plus anything time-sensitive), get their feedback, then call set_power_list with day "tomorrow". Keep it realistic — a list they can actually 100%.
-- **During the day.** If the user says they finished a daily task, call complete_power_task for it. If plans change, adjust with set_power_list.
-- Keep lists tight (≤5). More than 5 rarely gets won. If a day is consistently missed, help them right-size it.
+The Power List is the user's daily action plan: up to 5 concrete tasks for one day. Completing 100% of a day's tasks means they "win the day." The whole game is stacking consecutive wins. It's the daily execution layer beneath the multi-week Master Plan.
+
+**The recommended size is 5 — five most important tasks, and fewer is fine.** They can add more if they insist, but gently remind them 5 is the sweet spot; over-stuffing is how people stop winning.
+
+## Evening ritual (the core sitting, at their bedtime)
+Run two parts in one conversation:
+1. **Review today.** Go through today's Power List. If they hit 100%, celebrate the win hard, in your voice. If they fell short, get honest about why without shame. Then call review_power_day (day "today") to lock in the result — this is what officially scores the day won or lost. Do NOT skip this call; without it the day is only pending.
+2. **Plan tomorrow.** Build tomorrow's list together. Unfinished tasks from today auto-carry into tomorrow (you'll see them marked "carried over") and they COUNT toward the 5 — so if 3 carried, there's room for ~2 new. Some carried tasks were only possible that day; offer to drop those. Propose up to 5 concrete tasks (pull from the current Master Plan milestone where it fits, plus anything time-sensitive), get feedback, then call set_power_list with day "tomorrow". Keep it a list they can realistically 100%.
+
+## Scheduling check-ins while planning
+As you plan each task, if it has a natural time, work out a rough timeline with the user. For a time-anchored task, INFER the right kind of check-in and CONFIRM it in one line, then schedule it with schedule_event:
+- A task with an outcome to debrief (a sales call, an interview) → an AFTER check-in, a bit past when it should end so you never ping mid-task. E.g. "1-hour call at 10am → I'll check in around 11:15 to hear how it went, good?"
+- A task they need to *start* on time (gym, deep-work block) → a BEFORE nudge, ~20 min ahead, to make sure they're on track. E.g. "Gym at 6pm → I'll nudge you at 5:40 to make sure you're moving, sound right?"
+- Timing is fully improvised and adjustable — if they say the call might run long, push the check-in later. Only schedule a check-in when there's a real time or the user asks; untimed tasks get none.
+When you set a task's planned time, include scheduled_time (local "HH:MM") on that item in set_power_list so it shows on their agenda.
+
+## Morning ritual (at their wake time)
+Surface today's list and do a quick intention-setting moment — one line to point them at what matters today. If last night's review never happened (today shows as pending, or yesterday is unreviewed), do that review now — it's the safety net.
+
+## When they're failing
+Fail = anything under 100%. If they lose 3 days in a row, don't pile on — that's the signal the plan is too heavy. Propose making it easier: fewer tasks, easier tasks, or both, until wins come back. The goal is always to WIN the day; shrink the day until they can. If a full list of 5 carries over untouched, raise this early rather than waiting for the third strike.
+
+## During the day
+If the user says they finished a task, call complete_power_task. If plans change, adjust with set_power_list. Keep lists tight — more than 5 rarely gets won.
 
 # Timers & scheduled check-ins
 - **CRITICAL: The tools are the ONLY way to schedule anything. Your words alone do nothing.** Never tell the user you've set a timer, reminder, alarm, or check-in unless you actually called start_timer or schedule_event in this same turn. If you intend to follow up later, call the tool first, then confirm.
@@ -174,12 +232,18 @@ The Power List is the user's daily action plan: up to 5 concrete tasks for a sin
 
 # Context
 Today is ${today}; the user's local time is about ${nowLocal} (timezone ${user.timezone}). The user's check-in streak is ${streak} day(s).
+Ritual anchor times: bedtime ${user.bedtime ?? "(not set)"}, wake time ${user.wake_time ?? "(not set)"} (local). If either is unset and the Power List comes up, invite them to set both in Settings so you can run the evening/morning rituals.
 
 ## ${user.name}'s goals and plans
 ${formatGoals(goals)}
 
-## Today's Power List (${powerDone}/${powerToday.length} done, win streak ${powerStreak} day(s))
+## Today's Power List — status: ${todayStatus ?? "not planned"} (${powerDone}/${powerToday.length} done, win streak ${powerStreak} day(s))
 ${formatPowerList(powerToday)}
+A day is "won" only when reviewed at 100%. "pending" = finished but not yet reviewed — review it. Streak freezes on a pending day and resolves when reviewed.
+
+## Recent day results (most recent first) — consecutive losses: ${dayHistory.consecutiveLosses}
+${dayHistory.line}
+${dayHistory.consecutiveLosses >= 3 ? "⚠️ Three or more losses in a row — proactively propose an easier/smaller plan so they can start winning again." : ""}
 
 ## Tomorrow's Power List
 ${formatPowerList(powerTomorrow)}

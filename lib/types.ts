@@ -8,6 +8,9 @@ export interface User {
   coach_style: CoachStyle;
   allow_profanity: boolean;
   checkin_hour: number;
+  // Power List ritual anchor times, local "HH:MM" (24h). Null until the user sets them.
+  bedtime: string | null;
+  wake_time: string | null;
   timezone: string;
   created_at: string;
 }
@@ -87,8 +90,24 @@ export interface PowerTask {
   position: number;
   title: string;
   goal_id: string | null;
+  // Local "HH:MM" the user plans to do this, for the daily agenda. Null = untimed.
+  scheduled_time: string | null;
+  // True when carried over from a prior unfinished day.
+  carried_over: boolean;
   completed: boolean;
   completed_at: string | null;
+  created_at: string;
+}
+
+export type PowerDayStatus = "planned" | "won" | "lost" | "pending";
+
+export interface PowerDay {
+  id: string;
+  user_id: string;
+  plan_date: string;
+  status: PowerDayStatus;
+  planned_at: string | null;
+  reviewed_at: string | null;
   created_at: string;
 }
 

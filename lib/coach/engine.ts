@@ -1,10 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   addMessage,
-  computePowerStreak,
+  computeDayStreak,
   computeStreak,
+  getPowerDay,
+  getPowerDaysBetween,
   getPowerTasks,
-  getPowerTasksBetween,
   listActiveEvents,
   listGoalsWithPlans,
   listMemories,
@@ -79,7 +80,7 @@ export async function* coachTurn(
 
   const todayStr = userLocalDate(user.timezone, 0);
   const tomorrowStr = userLocalDate(user.timezone, 1);
-  const [goals, memories, checkIns, events, powerToday, powerTomorrow, powerRecent, history] =
+  const [goals, memories, checkIns, events, powerToday, powerTomorrow, powerDays, todayDay, history] =
     await Promise.all([
       listGoalsWithPlans(user.id),
       listMemories(user.id),
@@ -87,7 +88,8 @@ export async function* coachTurn(
       listActiveEvents(user.id),
       getPowerTasks(user.id, todayStr),
       getPowerTasks(user.id, tomorrowStr),
-      getPowerTasksBetween(user.id, userLocalDate(user.timezone, -14), todayStr),
+      getPowerDaysBetween(user.id, userLocalDate(user.timezone, -90), todayStr),
+      getPowerDay(user.id, todayStr),
       recentMessages(user.id),
     ]);
 
@@ -99,7 +101,9 @@ export async function* coachTurn(
     events,
     powerToday,
     powerTomorrow,
-    powerStreak: computePowerStreak(powerRecent, todayStr),
+    powerStreak: computeDayStreak(powerDays, todayStr),
+    powerDays,
+    todayStatus: todayDay?.status ?? null,
     todayStr,
     streak: computeStreak(checkIns, user.timezone),
   });

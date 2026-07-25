@@ -7,6 +7,8 @@ import type {
   GoalWithPlan,
   Memory,
   PlanItem,
+  PowerDay,
+  PowerDayStatus,
   PowerTask,
   PublicUser,
   ScheduledEvent,
@@ -30,7 +32,7 @@ export async function createUser(input: {
     await db()
       .from("users")
       .insert(input)
-      .select("id,email,name,coach_style,allow_profanity,checkin_hour,timezone,created_at")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
       .single<PublicUser>()
   );
 }
@@ -44,7 +46,7 @@ export async function findUserByEmail(email: string): Promise<User | null> {
 export async function findUserById(id: string): Promise<PublicUser | null> {
   const res = await db()
     .from("users")
-    .select("id,email,name,coach_style,allow_profanity,checkin_hour,timezone,created_at")
+    .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
     .eq("id", id)
     .maybeSingle<PublicUser>();
   if (res.error) throw new Error(res.error.message);
@@ -53,14 +55,19 @@ export async function findUserById(id: string): Promise<PublicUser | null> {
 
 export async function updateUser(
   id: string,
-  patch: Partial<Pick<User, "name" | "coach_style" | "allow_profanity" | "checkin_hour" | "timezone">>
+  patch: Partial<
+    Pick<
+      User,
+      "name" | "coach_style" | "allow_profanity" | "checkin_hour" | "bedtime" | "wake_time" | "timezone"
+    >
+  >
 ): Promise<PublicUser> {
   return unwrap(
     await db()
       .from("users")
       .update(patch)
       .eq("id", id)
-      .select("id,email,name,coach_style,allow_profanity,checkin_hour,timezone,created_at")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
       .single<PublicUser>()
   );
 }
@@ -486,11 +493,18 @@ export async function getPowerTasksBetween(
   );
 }
 
-/** Replace the whole Power List for a given day. */
+export interface PowerListItem {
+  title: string;
+  goal_id?: string | null;
+  scheduled_time?: string | null;
+  carried_over?: boolean;
+}
+
+/** Replace the whole Power List for a given day, and mark the day planned. */
 export async function setPowerList(
   userId: string,
   planDate: string,
-  items: Array<{ title: string; goal_id?: string | null }>
+  items: PowerListItem[]
 ): Promise<PowerTask[]> {
   const client = db();
   const del = await client
@@ -499,6 +513,7 @@ export async function setPowerList(
     .eq("user_id", userId)
     .eq("plan_date", planDate);
   if (del.error) throw new Error(del.error.message);
+  await markDayPlanned(userId, planDate);
   if (items.length === 0) return [];
   return unwrap(
     await client
@@ -510,6 +525,8 @@ export async function setPowerList(
           position: i,
           title: item.title,
           goal_id: item.goal_id ?? null,
+          scheduled_time: item.scheduled_time ?? null,
+          carried_over: item.carried_over ?? false,
         }))
       )
       .select("*")
@@ -522,21 +539,31 @@ export async function addPowerTask(input: {
   plan_date: string;
   title: string;
   goal_id?: string | null;
+  scheduled_time?: string | null;
 }): Promise<PowerTask> {
   const existing = await getPowerTasks(input.user_id, input.plan_date);
-  return unwrap(
+  const row = await unwrap(
     await db()
       .from("power_tasks")
-      .insert({ ...input, position: existing.length })
+      .insert({
+        user_id: input.user_id,
+        plan_date: input.plan_date,
+        title: input.title,
+        goal_id: input.goal_id ?? null,
+        scheduled_time: input.scheduled_time ?? null,
+        position: existing.length,
+      })
       .select("*")
       .single<PowerTask>()
   );
+  await markDayPlanned(input.user_id, input.plan_date);
+  return row;
 }
 
 export async function updatePowerTask(
   userId: string,
   id: string,
-  patch: { completed?: boolean; title?: string }
+  patch: { completed?: boolean; title?: string; scheduled_time?: string | null }
 ): Promise<PowerTask> {
   const full: Record<string, unknown> = { ...patch };
   if (patch.completed !== undefined) {
@@ -558,30 +585,145 @@ export async function deletePowerTask(userId: string, id: string): Promise<void>
   if (res.error) throw new Error(res.error.message);
 }
 
-/** Consecutive "won" days (every task complete) ending today or yesterday. Today
- *  still in progress doesn't break the streak. */
-export function computePowerStreak(tasks: PowerTask[], todayStr: string): number {
-  const byDate = new Map<string, PowerTask[]>();
-  for (const t of tasks) {
-    const list = byDate.get(t.plan_date) ?? [];
-    list.push(t);
-    byDate.set(t.plan_date, list);
-  }
-  const won = (list: PowerTask[] | undefined) =>
-    !!list && list.length > 0 && list.every((t) => t.completed);
+// ---------- power days (win/loss lifecycle) ----------
 
+export async function getPowerDay(userId: string, planDate: string): Promise<PowerDay | null> {
+  const res = await db()
+    .from("power_days")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("plan_date", planDate)
+    .maybeSingle<PowerDay>();
+  if (res.error) throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function getPowerDaysBetween(
+  userId: string,
+  fromDate: string,
+  toDate: string
+): Promise<PowerDay[]> {
+  return unwrap(
+    await db()
+      .from("power_days")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("plan_date", fromDate)
+      .lte("plan_date", toDate)
+      .order("plan_date", { ascending: true })
+      .returns<PowerDay[]>()
+  );
+}
+
+/** Mark a day as planned without clobbering an already-resolved (won/lost/pending) status. */
+export async function markDayPlanned(userId: string, planDate: string): Promise<void> {
+  const existing = await getPowerDay(userId, planDate);
+  const nowIso = new Date().toISOString();
+  if (!existing) {
+    const res = await db()
+      .from("power_days")
+      .insert({ user_id: userId, plan_date: planDate, status: "planned", planned_at: nowIso });
+    if (res.error) throw new Error(res.error.message);
+  } else if (existing.status === "planned") {
+    const res = await db().from("power_days").update({ planned_at: nowIso }).eq("id", existing.id);
+    if (res.error) throw new Error(res.error.message);
+  }
+}
+
+/** Review a day: score it won (100%) or lost from its task completion, and stamp reviewed_at. */
+export async function reviewPowerDay(
+  userId: string,
+  planDate: string
+): Promise<{ status: PowerDayStatus; done: number; total: number }> {
+  const tasks = await getPowerTasks(userId, planDate);
+  const total = tasks.length;
+  const done = tasks.filter((t) => t.completed).length;
+  const status: PowerDayStatus = total > 0 && done === total ? "won" : "lost";
+  const nowIso = new Date().toISOString();
+  const existing = await getPowerDay(userId, planDate);
+  if (existing) {
+    const res = await db()
+      .from("power_days")
+      .update({ status, reviewed_at: nowIso })
+      .eq("id", existing.id);
+    if (res.error) throw new Error(res.error.message);
+  } else {
+    const res = await db().from("power_days").insert({
+      user_id: userId,
+      plan_date: planDate,
+      status,
+      planned_at: nowIso,
+      reviewed_at: nowIso,
+    });
+    if (res.error) throw new Error(res.error.message);
+  }
+  return { status, done, total };
+}
+
+/**
+ * Consecutive won days ending at the most recent resolved day.
+ * - "won" increments the streak.
+ * - today in progress, or a finished-but-unreviewed ("pending"/"planned") day,
+ *   is transparent: it neither counts nor breaks — this is the "freeze at
+ *   pending" behavior.
+ * - "lost" or an unplanned (missing) day breaks the streak.
+ */
+export function computeDayStreak(days: PowerDay[], todayStr: string): number {
+  const byDate = new Map(days.map((d) => [d.plan_date, d.status]));
   let streak = 0;
   const cursor = new Date(`${todayStr}T00:00:00`);
-  const todayList = byDate.get(todayStr);
-  // If today isn't won yet, start counting from yesterday (today's not over).
-  if (!won(todayList)) cursor.setDate(cursor.getDate() - 1);
-  for (;;) {
+  for (let i = 0; i < 400; i++) {
     const key = cursor.toLocaleDateString("en-CA");
-    if (!won(byDate.get(key))) break;
-    streak += 1;
+    const status = byDate.get(key);
+    const isToday = key === todayStr;
+    if (status === "won") {
+      streak += 1;
+    } else if (isToday || status === "pending" || status === "planned") {
+      // in progress or awaiting review — freeze, don't break
+    } else {
+      break; // lost or unplanned day ends the streak
+    }
     cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
+}
+
+/**
+ * Copy a day's still-incomplete tasks into a target day as carried-over tasks,
+ * skipping any whose title already exists on the target. Returns the new tasks.
+ */
+export async function carryOverIncomplete(
+  userId: string,
+  fromDate: string,
+  toDate: string
+): Promise<PowerTask[]> {
+  const [source, target] = await Promise.all([
+    getPowerTasks(userId, fromDate),
+    getPowerTasks(userId, toDate),
+  ]);
+  const have = new Set(target.map((t) => t.title.trim().toLowerCase()));
+  const toCarry = source.filter((t) => !t.completed && !have.has(t.title.trim().toLowerCase()));
+  if (toCarry.length === 0) return [];
+  const base = target.length;
+  const carried = unwrap(
+    await db()
+      .from("power_tasks")
+      .insert(
+        toCarry.map((t, i) => ({
+          user_id: userId,
+          plan_date: toDate,
+          position: base + i,
+          title: t.title,
+          goal_id: t.goal_id,
+          scheduled_time: t.scheduled_time,
+          carried_over: true,
+        }))
+      )
+      .select("*")
+      .returns<PowerTask[]>()
+  );
+  await markDayPlanned(userId, toDate);
+  return carried;
 }
 
 export async function usersForCheckinHour(utcNow: Date): Promise<PublicUser[]> {
@@ -589,7 +731,7 @@ export async function usersForCheckinHour(utcNow: Date): Promise<PublicUser[]> {
   const users = unwrap(
     await db()
       .from("users")
-      .select("id,email,name,coach_style,allow_profanity,checkin_hour,timezone,created_at")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
       .returns<PublicUser[]>()
   );
   return users.filter((u) => {

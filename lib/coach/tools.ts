@@ -5,6 +5,7 @@ import {
   createGoal,
   createScheduledEvent,
   replacePlanItems,
+  reviewPowerDay,
   saveMemory,
   setFocusGoal,
   setPowerList,
@@ -186,18 +187,37 @@ export const coachTools: Anthropic.Tool[] = [
   {
     name: "set_power_list",
     description:
-      "Set (replace) the user's Power List — their daily action plan of up to 5 concrete tasks — for today or tomorrow. This is the Daily Action Plan you build with them each evening for the next day. Completing 100% of the day's tasks means they 'win the day'. Keep it to at most 5 focused, concrete tasks, drawn from their current goal milestone where it fits. Replaces any existing list for that day.",
+      "Set (replace) the user's Power List — their daily action plan of up to 5 concrete tasks — for today or tomorrow. This is the Daily Action Plan you build with them each evening for the next day. Completing 100% means they 'win the day'. Keep it to at most 5 focused tasks, drawn from their current goal milestone where it fits. Include any still-unfinished tasks carried from today. Replaces the existing list for that day. For each task you can set a scheduled_time (local 'HH:MM') so it shows on their daily agenda; schedule any actual check-in separately with schedule_event.",
     input_schema: {
       type: "object",
       properties: {
         day: { type: "string", enum: ["today", "tomorrow"] },
         tasks: {
           type: "array",
-          description: "Up to 5 concrete task titles for the day",
-          items: { type: "string" },
+          description: "Up to 5 tasks for the day, in priority order",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              scheduled_time: {
+                type: "string",
+                description: "Local time the user plans to do it, 'HH:MM' (24h). Optional.",
+              },
+            },
+            required: ["title"],
+          },
         },
       },
       required: ["day", "tasks"],
+    },
+  },
+  {
+    name: "review_power_day",
+    description:
+      "Lock in a day's result during the evening review (or the morning safety-net review). Scores the day WON if 100% of its tasks are complete, otherwise LOST, and marks it reviewed. Call this after you and the user have gone through the day's Power List together. Default day is 'today'; use 'yesterday' when catching up in the morning on an unreviewed prior day.",
+    input_schema: {
+      type: "object",
+      properties: { day: { type: "string", enum: ["today", "yesterday"] } },
     },
   },
   {
@@ -344,20 +364,26 @@ export async function executeCoachTool(
       return { result: JSON.stringify({ ok: true }), mutated: true };
     }
     case "set_power_list": {
-      const titles = ((input.tasks as unknown[]) ?? [])
-        .map((t) => String(t).trim())
-        .filter((t) => t.length > 0)
+      const raw = (input.tasks as Array<{ title?: string; scheduled_time?: string }>) ?? [];
+      const items = raw
+        .map((t) => ({
+          title: String(t?.title ?? "").trim(),
+          scheduled_time: t?.scheduled_time ? String(t.scheduled_time) : null,
+        }))
+        .filter((t) => t.title.length > 0)
         .slice(0, 5);
       const planDate = userLocalDate(user.timezone, input.day === "tomorrow" ? 1 : 0);
-      const saved = await setPowerList(
-        userId,
-        planDate,
-        titles.map((title) => ({ title }))
-      );
+      const saved = await setPowerList(userId, planDate, items);
       return {
         result: JSON.stringify({ day: input.day, date: planDate, tasks: saved.length }),
         mutated: true,
       };
+    }
+    case "review_power_day": {
+      const offset = input.day === "yesterday" ? -1 : 0;
+      const planDate = userLocalDate(user.timezone, offset);
+      const outcome = await reviewPowerDay(userId, planDate);
+      return { result: JSON.stringify({ date: planDate, ...outcome }), mutated: true };
     }
     case "complete_power_task": {
       const task = await updatePowerTask(userId, String(input.ptask_id), {
