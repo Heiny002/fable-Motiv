@@ -32,7 +32,7 @@ export async function createUser(input: {
     await db()
       .from("users")
       .insert(input)
-      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,onboarded,timezone,created_at")
       .single<PublicUser>()
   );
 }
@@ -46,7 +46,7 @@ export async function findUserByEmail(email: string): Promise<User | null> {
 export async function findUserById(id: string): Promise<PublicUser | null> {
   const res = await db()
     .from("users")
-    .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
+    .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,onboarded,timezone,created_at")
     .eq("id", id)
     .maybeSingle<PublicUser>();
   if (res.error) throw new Error(res.error.message);
@@ -58,7 +58,14 @@ export async function updateUser(
   patch: Partial<
     Pick<
       User,
-      "name" | "coach_style" | "allow_profanity" | "checkin_hour" | "bedtime" | "wake_time" | "timezone"
+      | "name"
+      | "coach_style"
+      | "allow_profanity"
+      | "checkin_hour"
+      | "bedtime"
+      | "wake_time"
+      | "onboarded"
+      | "timezone"
     >
   >
 ): Promise<PublicUser> {
@@ -67,7 +74,7 @@ export async function updateUser(
       .from("users")
       .update(patch)
       .eq("id", id)
-      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,onboarded,timezone,created_at")
       .single<PublicUser>()
   );
 }
@@ -730,7 +737,7 @@ export async function listUsers(): Promise<PublicUser[]> {
   return unwrap(
     await db()
       .from("users")
-      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,onboarded,timezone,created_at")
       .returns<PublicUser[]>()
   );
 }
@@ -766,7 +773,7 @@ export async function usersForCheckinHour(utcNow: Date): Promise<PublicUser[]> {
   const users = unwrap(
     await db()
       .from("users")
-      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,timezone,created_at")
+      .select("id,email,name,coach_style,allow_profanity,checkin_hour,bedtime,wake_time,onboarded,timezone,created_at")
       .returns<PublicUser[]>()
   );
   return users.filter((u) => {

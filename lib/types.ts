@@ -11,6 +11,7 @@ export interface User {
   // Power List ritual anchor times, local "HH:MM" (24h). Null until the user sets them.
   bedtime: string | null;
   wake_time: string | null;
+  onboarded: boolean;
   timezone: string;
   created_at: string;
 }

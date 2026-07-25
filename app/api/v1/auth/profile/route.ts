@@ -19,6 +19,7 @@ const patchSchema = z.object({
   checkin_hour: z.number().int().min(0).max(23).optional(),
   bedtime: hhmm.optional(),
   wake_time: hhmm.optional(),
+  onboarded: z.boolean().optional(),
   timezone: z.string().max(64).optional(),
 });
 
