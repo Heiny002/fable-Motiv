@@ -26,7 +26,7 @@ export default function AuthForm({ mode }: { mode: "signup" | "login" }) {
         setError(data.error ?? "Something went wrong");
         return;
       }
-      router.push("/chat");
+      router.push(mode === "signup" ? "/welcome" : "/chat");
       router.refresh();
     } catch {
       setError("Network error — try again");
