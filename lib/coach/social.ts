@@ -31,6 +31,8 @@ export async function generateSocialPost(
     model: COACH_MODEL,
     max_tokens: 1024,
     thinking: { type: "adaptive" },
+    // A short social post — low effort is plenty.
+    output_config: { effort: "low" },
     system: `You ghost-write social media posts in the USER's first-person voice about their goal journey (their coach is a ${personality.label}, but the post is the user's voice, authentic and human — include real struggle, not just highlights). Output ONLY the post text, ready to copy. No preamble, no surrounding quotes.`,
     messages: [
       {

@@ -17,7 +17,7 @@ import type { PublicUser } from "../types";
 import { buildSystemPrompt } from "./prompt";
 import { coachTools, executeCoachTool } from "./tools";
 
-export const COACH_MODEL = "claude-opus-4-8";
+export const COACH_MODEL = "claude-opus-5";
 const MAX_TOOL_ROUNDS = 8;
 
 export function anthropicClient(): Anthropic | null {
@@ -132,8 +132,10 @@ export async function* coachTurn(
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const stream = client.messages.stream({
+        // max_tokens caps thinking + reply together, so leave headroom — we're
+        // only billed for what's actually generated.
         model: COACH_MODEL,
-        max_tokens: 4096,
+        max_tokens: 16000,
         thinking: { type: "adaptive" },
         system,
         tools: coachTools,
@@ -154,8 +156,10 @@ export async function* coachTurn(
       const toolNames = response.content
         .filter((b) => b.type === "tool_use")
         .map((b) => (b as Anthropic.ToolUseBlock).name);
+      const u = response.usage;
       console.log(
-        `[coach] user=${user.id} round=${round} stop=${response.stop_reason} tools=[${toolNames.join(",")}]`
+        `[coach] user=${user.id} round=${round} stop=${response.stop_reason} tools=[${toolNames.join(",")}] ` +
+          `in=${u.input_tokens} out=${u.output_tokens} cache_write=${u.cache_creation_input_tokens ?? 0} cache_read=${u.cache_read_input_tokens ?? 0}`
       );
 
       if (response.stop_reason === "refusal") {
