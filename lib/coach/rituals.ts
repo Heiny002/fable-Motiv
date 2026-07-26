@@ -42,6 +42,8 @@ export async function fireRitual(user: PublicUser, kind: RitualKind): Promise<vo
         model: COACH_MODEL,
         max_tokens: 400,
         thinking: { type: "adaptive" },
+        // One short opener — no need to spend deep reasoning on it.
+        output_config: { effort: "low" },
         system: `You are Motiv, ${user.name}'s AI goal coach (${personality.label}). ${personality.voice} ${
           user.allow_profanity ? "Mild profanity is allowed if it fits your style." : "Never use profanity."
         } Write a short opener (1-3 sentences). No preamble, no lists, no markdown headers.`,

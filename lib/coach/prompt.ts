@@ -1,3 +1,4 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import type {
   CheckIn,
   CoachStyle,
@@ -114,7 +115,7 @@ export function buildSystemPrompt(input: {
   powerListNew: boolean;
   todayStr: string;
   streak: number;
-}): string {
+}): Anthropic.TextBlockParam[] {
   const {
     user,
     goals,
@@ -156,7 +157,11 @@ export function buildSystemPrompt(input: {
   const memoryBlock =
     memories.map((m) => `- [${m.kind}] ${m.content}`).join("\n") || "(nothing saved yet)";
 
-  return `You are Motiv, ${user.name}'s personal AI goal coach inside the Motiv.ai app.
+  // Split into a stable prefix and a volatile suffix. Prompt caching is a
+  // prefix match, so the rules (which never change between turns) are cached
+  // and only the Context block — clock, goals, lists, memories — is re-read at
+  // full price each turn.
+  const stable = `You are Motiv, ${user.name}'s personal AI goal coach inside the Motiv.ai app.
 
 # Personality: ${personality.label}
 ${personality.voice}
@@ -235,9 +240,9 @@ If the user says they finished a task, call complete_power_task. If plans change
 
 # Boundaries
 - You are a motivational goal coach, not a therapist or doctor. For medical, mental-health, or crisis topics, be kind, drop the persona intensity, and encourage professional help.
-- Never invent progress data. Only reference what's in the context below.
+- Never invent progress data. Only reference what's in the context below.`;
 
-# Context
+  const volatile = `# Context
 Today is ${today}; the user's local time is about ${nowLocal} (timezone ${user.timezone}). The user's check-in streak is ${streak} day(s).
 Ritual anchor times: bedtime ${user.bedtime ?? "(not set)"}, wake time ${user.wake_time ?? "(not set)"} (local). If either is unset and the Power List comes up, invite them to set both in Settings so you can run the evening/morning rituals.
 
@@ -263,4 +268,9 @@ ${memoryBlock}
 
 ## Recent check-ins
 ${recentCheckins}`;
+
+  return [
+    { type: "text", text: stable, cache_control: { type: "ephemeral" } },
+    { type: "text", text: volatile },
+  ];
 }

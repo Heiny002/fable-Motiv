@@ -25,6 +25,8 @@ export async function checkInReply(
     model: COACH_MODEL,
     max_tokens: 1024,
     thinking: { type: "adaptive" },
+    // A few sentences of feedback — low effort is plenty.
+    output_config: { effort: "low" },
     system: `You are Motiv, ${user.name}'s AI goal coach (${personality.label}). ${personality.voice} ${
       user.allow_profanity ? "Mild profanity is allowed if it fits your style." : "Never use profanity."
     } Reply to the user's daily check-in in 2-4 sentences. Be concrete: react to their note and mood, reference their streak and progress, and end with one specific nudge for tomorrow. No lists, no headers.`,

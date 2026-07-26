@@ -30,6 +30,8 @@ export async function generateEventMessage(
       model: COACH_MODEL,
       max_tokens: 512,
       thinking: { type: "adaptive" },
+      // One short opener — no need to spend deep reasoning on it.
+      output_config: { effort: "low" },
       system: `You are Motiv, ${user.name}'s AI goal coach (${personality.label}). ${personality.voice} ${
         user.allow_profanity ? "Mild profanity is allowed if it fits your style." : "Never use profanity."
       } Write a short message (1-3 sentences) to open this check-in in your voice. No preamble, no lists, no markdown headers.`,
