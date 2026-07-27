@@ -151,6 +151,9 @@ export default function TodayView() {
   }, []);
 
   const todayTasks = today?.tasks ?? [];
+  // Tasks added by hand have no time, so no check-in gets scheduled — surface
+  // that as an opt-in prompt rather than pushing a message at them.
+  const untimedToday = todayTasks.filter((t) => !t.scheduled_time && !t.completed).length;
   const done = todayTasks.filter((t) => t.completed).length;
   const total = todayTasks.length;
   const won = total > 0 && done === total;
@@ -260,12 +263,28 @@ export default function TodayView() {
 
       <TaskList {...listProps("today")} />
 
+      {untimedToday > 0 && (
+        <Link
+          href="/chat?intent=schedule_times"
+          className="mt-2 flex items-center justify-between rounded-2xl border border-dashed border-brand-200 bg-brand-50/50 px-3.5 py-2.5 active:scale-[0.99]"
+        >
+          <span className="text-[12px] leading-snug text-brand-700">
+            {untimedToday} task{untimedToday === 1 ? "" : "s"} without a time — have coach schedule
+            your check-ins
+          </span>
+          <span className="ml-2 shrink-0 text-brand-500">→</span>
+        </Link>
+      )}
+
       <section className="mt-8">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
             Tomorrow{tomorrow ? ` · ${fmtDate(tomorrow.date)}` : ""}
           </h2>
-          <Link href="/chat" className="text-xs font-semibold text-brand-600">
+          <Link
+            href="/chat?intent=plan_tomorrow"
+            className="text-xs font-semibold text-brand-600"
+          >
             Plan with coach →
           </Link>
         </div>
