@@ -12,6 +12,16 @@ interface Msg {
   created_at?: string;
 }
 
+/**
+ * Deep-link intents from the Check-in screen. Tapping "Plan with coach" should
+ * land you mid-ritual, not in a cold chat where you have to restate why you came.
+ */
+const INTENT_SEEDS: Record<string, string> = {
+  plan_tomorrow: "Let's plan tomorrow's Power List.",
+  schedule_times:
+    "Can we set times for today's tasks and schedule check-ins around them?",
+};
+
 const MEM_LABEL: Record<string, string> = {
   biographical: "About you",
   goal: "Goal context",
@@ -41,6 +51,7 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
   const [now, setNow] = useState(() => Date.now());
   const bottomRef = useRef<HTMLDivElement>(null);
   const firedRef = useRef<Set<string>>(new Set());
+  const seededRef = useRef(false);
   const speech = useSpeech();
 
   const loadHistory = useCallback(async () => {
@@ -66,6 +77,20 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
   useEffect(() => {
     Promise.all([loadHistory(), loadEvents()]).finally(() => setLoaded(true));
   }, [loadHistory, loadEvents]);
+
+  // Fire the deep-link intent once history is in place, then strip the param so
+  // a refresh (or the back button) can't send it a second time.
+  useEffect(() => {
+    if (!loaded || seededRef.current || busy) return;
+    const intent = new URLSearchParams(window.location.search).get("intent");
+    if (!intent) return;
+    const seed = INTENT_SEEDS[intent];
+    if (!seed) return;
+    seededRef.current = true;
+    window.history.replaceState({}, "", "/chat");
+    send(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, busy]);
 
   // Tick a clock once per second for live countdowns.
   useEffect(() => {
@@ -109,10 +134,10 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
-  async function send() {
-    const text = input.trim();
+  async function send(seed?: string) {
+    const text = (seed ?? input).trim();
     if (!text || busy) return;
-    setInput("");
+    if (!seed) setInput("");
     setBusy(true);
     const nowIso = new Date().toISOString();
     setMessages((m) => [
@@ -303,7 +328,7 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
             }}
           />
           <button
-            onClick={send}
+            onClick={() => send()}
             disabled={busy || !input.trim()}
             className="rounded-full bg-brand-600 p-3 text-white shadow disabled:opacity-40 active:scale-95"
             aria-label="Send"
