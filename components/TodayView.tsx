@@ -29,6 +29,100 @@ function fmtDate(iso: string): string {
   });
 }
 
+/**
+ * Declared at module scope on purpose. When this lived inside TodayView, every
+ * keystroke created a new component identity, so React unmounted and remounted
+ * the input — dropping focus and closing the mobile keyboard after each letter.
+ */
+function TaskList({
+  tasks,
+  adding,
+  setAdding,
+  onAdd,
+  onToggle,
+  onRemove,
+}: {
+  tasks: PowerTask[];
+  adding: string;
+  setAdding: (v: string) => void;
+  onAdd: () => void;
+  onToggle: (task: PowerTask) => void;
+  onRemove: (task: PowerTask) => void;
+}) {
+  return (
+    <>
+      <ul className="space-y-2">
+        {tasks.map((task) => (
+          <li key={task.id} className="flex items-center gap-2">
+            <button
+              onClick={() => onToggle(task)}
+              className={`flex flex-1 items-center gap-3 rounded-2xl p-3.5 text-left shadow-sm ${
+                task.completed ? "bg-brand-50/70" : "bg-white"
+              }`}
+            >
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold ${
+                  task.completed ? "border-brand-500 bg-brand-500 text-white" : "border-slate-300 text-transparent"
+                }`}
+              >
+                ✓
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`block text-[15px] ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}
+                >
+                  {task.title}
+                </span>
+                {(task.scheduled_time || task.carried_over) && (
+                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px]">
+                    {task.scheduled_time && (
+                      <span className="text-brand-600">🕑 {fmtTime(task.scheduled_time)}</span>
+                    )}
+                    {task.carried_over && (
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
+                        carried over
+                      </span>
+                    )}
+                  </span>
+                )}
+              </span>
+            </button>
+            <button
+              onClick={() => onRemove(task)}
+              className="px-1 text-slate-300 hover:text-red-500"
+              aria-label="Remove"
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex gap-2">
+        <input
+          value={adding}
+          onChange={(e) => setAdding(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onAdd()}
+          placeholder={tasks.length === 0 ? "Add your first task…" : "Add a task…"}
+          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500"
+          maxLength={200}
+        />
+        <button
+          onClick={onAdd}
+          disabled={!adding.trim()}
+          className="rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+      {tasks.length >= 5 && (
+        <p className="mt-2 text-center text-[11px] text-amber-600">
+          5 is the recommended max — the fewer, the more winnable. Add more only if you must.
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function TodayView() {
   const [today, setToday] = useState<DayList | null>(null);
   const [tomorrow, setTomorrow] = useState<DayList | null>(null);
@@ -103,79 +197,16 @@ export default function TodayView() {
     load();
   }
 
-  function List({ day, list }: { day: "today" | "tomorrow"; list: DayList | null }) {
-    const tasks = list?.tasks ?? [];
-    const adding = day === "today" ? addingToday : addingTomorrow;
-    const setAdding = day === "today" ? setAddingToday : setAddingTomorrow;
-    return (
-      <>
-        <ul className="space-y-2">
-          {tasks.map((task) => (
-            <li key={task.id} className="flex items-center gap-2">
-              <button
-                onClick={() => toggle(task, day)}
-                className={`flex flex-1 items-center gap-3 rounded-2xl p-3.5 text-left shadow-sm ${
-                  task.completed ? "bg-brand-50/70" : "bg-white"
-                }`}
-              >
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold ${
-                    task.completed ? "border-brand-500 bg-brand-500 text-white" : "border-slate-300 text-transparent"
-                  }`}
-                >
-                  ✓
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={`block text-[15px] ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}
-                  >
-                    {task.title}
-                  </span>
-                  {(task.scheduled_time || task.carried_over) && (
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px]">
-                      {task.scheduled_time && (
-                        <span className="text-brand-600">🕑 {fmtTime(task.scheduled_time)}</span>
-                      )}
-                      {task.carried_over && (
-                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
-                          carried over
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </span>
-              </button>
-              <button onClick={() => remove(task)} className="px-1 text-slate-300 hover:text-red-500" aria-label="Remove">
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-2 flex gap-2">
-          <input
-            value={adding}
-            onChange={(e) => setAdding(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add(day)}
-            placeholder={tasks.length === 0 ? "Add your first task…" : "Add a task…"}
-            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500"
-            maxLength={200}
-          />
-          <button
-            onClick={() => add(day)}
-            disabled={!adding.trim()}
-            className="rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
-          >
-            Add
-          </button>
-        </div>
-        {tasks.length >= 5 && (
-          <p className="mt-2 text-center text-[11px] text-amber-600">
-            5 is the recommended max — the fewer, the more winnable. Add more only if you must.
-          </p>
-        )}
-      </>
-    );
-  }
+  if (!loaded) return <p className="py-16 text-center text-sm text-slate-400">Loading…</p>;
+
+  const listProps = (day: "today" | "tomorrow") => ({
+    tasks: (day === "today" ? today : tomorrow)?.tasks ?? [],
+    adding: day === "today" ? addingToday : addingTomorrow,
+    setAdding: day === "today" ? setAddingToday : setAddingTomorrow,
+    onAdd: () => add(day),
+    onToggle: (task: PowerTask) => toggle(task, day),
+    onRemove: remove,
+  });
 
   if (!loaded) return <p className="py-16 text-center text-sm text-slate-400">Loading…</p>;
 
@@ -227,7 +258,7 @@ export default function TodayView() {
         </div>
       </div>
 
-      <List day="today" list={today} />
+      <TaskList {...listProps("today")} />
 
       <section className="mt-8">
         <div className="mb-2 flex items-center justify-between">
@@ -241,7 +272,7 @@ export default function TodayView() {
         <p className="mb-2 text-xs text-slate-500">
           Set tomorrow&apos;s plan tonight — the evening ritual. Aim for a list you can win.
         </p>
-        <List day="tomorrow" list={tomorrow} />
+        <TaskList {...listProps("tomorrow")} />
       </section>
     </main>
   );
