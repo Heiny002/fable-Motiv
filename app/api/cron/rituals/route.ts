@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import {
   carryOverIncomplete,
+  computeConsecutiveLosses,
+  getPowerDay,
+  getPowerDaysBetween,
   getPowerTasks,
   listPowerDaysToResolve,
   listUsers,
@@ -8,7 +11,7 @@ import {
   updateUser,
 } from "@/lib/data";
 import { userLocalDate } from "@/lib/date";
-import { fireRitual } from "@/lib/coach/rituals";
+import { fireDayClosed, fireRitual } from "@/lib/coach/rituals";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -73,6 +76,7 @@ export async function GET(req: Request) {
   let evening = 0;
   let morning = 0;
   let resolved = 0;
+  let closed = 0;
 
   for (const user of users) {
     const clock = localClock(user.timezone);
@@ -94,34 +98,81 @@ export async function GET(req: Request) {
         if (next && next !== d.status) {
           await setPowerDayStatus(user.id, d.plan_date, next);
           resolved += 1;
+          // The deadline just passed on a day they never reviewed — say so
+          // rather than letting the streak disappear silently.
+          if (next === "lost") {
+            const [dayTasks, history] = await Promise.all([
+              getPowerTasks(user.id, d.plan_date),
+              getPowerDaysBetween(user.id, userLocalDate(user.timezone, -90), todayStr),
+            ]);
+            await fireDayClosed(user, d.plan_date, {
+              done: dayTasks.filter((t) => t.completed).length,
+              total: dayTasks.length,
+              consecutiveLosses: computeConsecutiveLosses(history, todayStr),
+            });
+            closed += 1;
+          }
         }
       }
     } catch (err) {
       console.error("[rituals] sweep error:", err);
     }
 
+    const eveningDue = ritualDue(user.bedtime, user.last_evening_ritual, clock, todayStr);
+    const morningDue = ritualDue(user.wake_time, user.last_morning_ritual, clock, todayStr);
+
+    // Losing streak drives the escalating tone on both nudges.
+    let losses = 0;
+    if (eveningDue || morningDue) {
+      try {
+        const history = await getPowerDaysBetween(
+          user.id,
+          userLocalDate(user.timezone, -90),
+          todayStr
+        );
+        losses = computeConsecutiveLosses(history, todayStr);
+      } catch {
+        /* tone falls back to neutral */
+      }
+    }
+
     // --- Evening nudge (bedtime): review today + plan tomorrow. ---
-    if (ritualDue(user.bedtime, user.last_evening_ritual, clock, todayStr)) {
+    if (eveningDue) {
       try {
         // Claim the day BEFORE sending so a concurrent run can't double-fire.
         await updateUser(user.id, { last_evening_ritual: todayStr });
-        await fireRitual(user, "evening");
+        await fireRitual(user, "evening", {
+          consecutiveLosses: losses,
+          carriedCount: 0,
+        });
         evening += 1;
       } catch (err) {
         console.error("[rituals] evening error:", err);
       }
     }
 
-    // --- Morning nudge (wake time): intention + safety-net. Auto-carry
-    // yesterday's unfinished tasks only if today hasn't been planned. ---
-    if (ritualDue(user.wake_time, user.last_morning_ritual, clock, todayStr)) {
+    // --- Morning nudge (wake time): intention, or recovery when last night's
+    // review was skipped. Auto-carry yesterday's unfinished tasks only if today
+    // hasn't been planned. ---
+    if (morningDue) {
       try {
         await updateUser(user.id, { last_morning_ritual: todayStr });
         const todayTasks = await getPowerTasks(user.id, todayStr);
+        let carriedCount = 0;
         if (todayTasks.length === 0) {
-          await carryOverIncomplete(user.id, yesterdayStr, todayStr);
+          carriedCount = (await carryOverIncomplete(user.id, yesterdayStr, todayStr)).length;
         }
-        await fireRitual(user, "morning");
+        // Yesterday still awaiting review => this is a recovery morning.
+        const yesterday = await getPowerDay(user.id, yesterdayStr);
+        const pendingDate =
+          yesterday && (yesterday.status === "pending" || yesterday.status === "planned")
+            ? yesterdayStr
+            : null;
+        await fireRitual(user, "morning", {
+          pendingDate,
+          consecutiveLosses: losses,
+          carriedCount,
+        });
         morning += 1;
       } catch (err) {
         console.error("[rituals] morning error:", err);
@@ -129,5 +180,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ users: users.length, evening, morning, resolved });
+  return NextResponse.json({ users: users.length, evening, morning, resolved, closed });
 }

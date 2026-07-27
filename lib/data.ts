@@ -697,6 +697,19 @@ export function computeDayStreak(days: PowerDay[], todayStr: string): number {
   return streak;
 }
 
+/** Consecutive resolved-and-lost days working backwards from before today. */
+export function computeConsecutiveLosses(days: PowerDay[], todayStr: string): number {
+  const resolved = days
+    .filter((d) => d.plan_date < todayStr && (d.status === "won" || d.status === "lost"))
+    .sort((a, b) => (a.plan_date < b.plan_date ? 1 : -1));
+  let losses = 0;
+  for (const d of resolved) {
+    if (d.status !== "lost") break;
+    losses += 1;
+  }
+  return losses;
+}
+
 /**
  * Copy a day's still-incomplete tasks into a target day as carried-over tasks,
  * skipping any whose title already exists on the target. Returns the new tasks.
