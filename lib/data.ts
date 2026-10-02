@@ -27,6 +27,7 @@ export async function createUser(input: {
   email: string;
   password_hash: string;
   name: string;
+  invite_code?: string | null;
 }): Promise<PublicUser> {
   return unwrap(
     await db()
@@ -802,4 +803,78 @@ export async function usersForCheckinHour(utcNow: Date): Promise<PublicUser[]> {
       return false;
     }
   });
+}
+
+// ---------- usage cap ----------
+
+export async function recordUsage(userId: string, kind: string): Promise<void> {
+  const res = await db().from("usage_events").insert({ user_id: userId, kind });
+  if (res.error) throw new Error(res.error.message);
+}
+
+export async function countUsageSince(userId: string, sinceIso: string): Promise<number> {
+  const res = await db()
+    .from("usage_events")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", sinceIso);
+  if (res.error) throw new Error(res.error.message);
+  return res.count ?? 0;
+}
+
+export async function earliestUsageSince(userId: string, sinceIso: string): Promise<string | null> {
+  const res = await db()
+    .from("usage_events")
+    .select("created_at")
+    .eq("user_id", userId)
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle<{ created_at: string }>();
+  if (res.error) throw new Error(res.error.message);
+  return res.data?.created_at ?? null;
+}
+
+// ---------- password reset ----------
+
+export async function createPasswordReset(input: {
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+}): Promise<void> {
+  const res = await db().from("password_resets").insert(input);
+  if (res.error) throw new Error(res.error.message);
+}
+
+/**
+ * Atomically claim a valid (unused, unexpired) reset token. The conditional
+ * UPDATE is the single-use guarantee: two concurrent requests can't both win.
+ * Returns the owning user id, or null if the token is invalid/used/expired.
+ */
+export async function claimPasswordReset(tokenHash: string): Promise<string | null> {
+  const res = await db()
+    .from("password_resets")
+    .update({ used_at: new Date().toISOString() })
+    .eq("token_hash", tokenHash)
+    .is("used_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .select("user_id")
+    .maybeSingle<{ user_id: string }>();
+  if (res.error) throw new Error(res.error.message);
+  return res.data?.user_id ?? null;
+}
+
+/** Void any other outstanding reset links for this user. */
+export async function voidPasswordResets(userId: string): Promise<void> {
+  const res = await db()
+    .from("password_resets")
+    .update({ used_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .is("used_at", null);
+  if (res.error) throw new Error(res.error.message);
+}
+
+export async function setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+  const res = await db().from("users").update({ password_hash: passwordHash }).eq("id", userId);
+  if (res.error) throw new Error(res.error.message);
 }

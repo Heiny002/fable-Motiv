@@ -8,6 +8,7 @@ export default function AuthForm({ mode }: { mode: "signup" | "login" }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -19,7 +20,9 @@ export default function AuthForm({ mode }: { mode: "signup" | "login" }) {
       const res = await fetch(mode === "signup" ? "/api/v1/auth/register" : "/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "signup" ? { name, email, password } : { email, password }),
+        body: JSON.stringify(
+          mode === "signup" ? { name, email, password, invite_code: inviteCode } : { email, password }
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -69,6 +72,17 @@ export default function AuthForm({ mode }: { mode: "signup" | "login" }) {
         minLength={mode === "signup" ? 8 : undefined}
         required
       />
+      {mode === "signup" && (
+        <input
+          className={input}
+          placeholder="Invite code"
+          value={inviteCode}
+          onChange={(e) => setInviteCode(e.target.value)}
+          autoComplete="off"
+          autoCapitalize="none"
+          required
+        />
+      )}
       {error && <p className="text-sm font-medium text-red-600">{error}</p>}
       <button
         type="submit"

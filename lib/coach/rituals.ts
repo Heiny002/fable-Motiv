@@ -2,7 +2,7 @@ import { addMessage, getPowerTasks } from "../data";
 import { userLocalDate } from "../date";
 import { sendPushToUser } from "../push";
 import type { PublicUser } from "../types";
-import { anthropicClient, COACH_MODEL } from "./engine";
+import { anthropicClient, FAST_MODEL } from "./engine";
 import { PERSONALITIES } from "./prompt";
 
 export type RitualKind = "evening" | "morning";
@@ -79,7 +79,7 @@ export async function fireRitual(
 
     try {
       const response = await client.messages.create({
-        model: COACH_MODEL,
+        model: FAST_MODEL,
         max_tokens: 400,
         thinking: { type: "adaptive" },
         // One short opener — no need to spend deep reasoning on it.
@@ -122,7 +122,7 @@ export async function fireDayClosed(
     const personality = PERSONALITIES[user.coach_style] ?? PERSONALITIES.supportive;
     try {
       const response = await client.messages.create({
-        model: COACH_MODEL,
+        model: FAST_MODEL,
         max_tokens: 400,
         thinking: { type: "adaptive" },
         output_config: { effort: "low" },

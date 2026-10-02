@@ -1,6 +1,6 @@
 import type { GoalWithPlan, PublicUser } from "../types";
 import { PERSONALITIES } from "./prompt";
-import { anthropicClient, COACH_MODEL } from "./engine";
+import { anthropicClient, FAST_MODEL } from "./engine";
 
 export type SocialPlatform = "instagram" | "x" | "linkedin";
 
@@ -28,7 +28,7 @@ export async function generateSocialPost(
 
   const personality = PERSONALITIES[user.coach_style] ?? PERSONALITIES.supportive;
   const response = await client.messages.create({
-    model: COACH_MODEL,
+    model: FAST_MODEL,
     max_tokens: 1024,
     thinking: { type: "adaptive" },
     // A short social post — low effort is plenty.
