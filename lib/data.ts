@@ -939,3 +939,19 @@ export async function markResetRequestsHandled(userId: string): Promise<void> {
     .is("handled_at", null);
   if (res.error) throw new Error(res.error.message);
 }
+
+// ---------- admin recovery throttle ----------
+
+export async function countRecentRecoveryFailures(sinceIso: string): Promise<number> {
+  const res = await db()
+    .from("recovery_attempts")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", sinceIso);
+  if (res.error) throw new Error(res.error.message);
+  return res.count ?? 0;
+}
+
+export async function recordRecoveryFailure(): Promise<void> {
+  const res = await db().from("recovery_attempts").insert({});
+  if (res.error) throw new Error(res.error.message);
+}
