@@ -955,3 +955,78 @@ export async function recordRecoveryFailure(): Promise<void> {
   const res = await db().from("recovery_attempts").insert({});
   if (res.error) throw new Error(res.error.message);
 }
+
+// ---------- inactivity / proactive throttle ----------
+
+/**
+ * When the user last did something themselves: a chat message, a completed or
+ * hand-added Power List task, or a check-in. Carried-over tasks and anything the
+ * coach sent are deliberately NOT counted — they happen without the user.
+ * Falls back to `fallbackIso` (account creation) if there is no activity at all.
+ */
+export async function lastUserActivityAt(userId: string, fallbackIso: string): Promise<string> {
+  const c = db();
+  const [msg, done, added, checkin] = await Promise.all([
+    c
+      .from("messages")
+      .select("created_at")
+      .eq("user_id", userId)
+      .eq("role", "user")
+      .neq("content", "") // tool_result rows are stored as role=user with empty text
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ created_at: string }>(),
+    c
+      .from("power_tasks")
+      .select("completed_at")
+      .eq("user_id", userId)
+      .not("completed_at", "is", null)
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ completed_at: string }>(),
+    c
+      .from("power_tasks")
+      .select("created_at")
+      .eq("user_id", userId)
+      .eq("carried_over", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ created_at: string }>(),
+    c
+      .from("checkins")
+      .select("created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ created_at: string }>(),
+  ]);
+  for (const r of [msg, done, added, checkin]) if (r.error) throw new Error(r.error.message);
+  const times = [
+    fallbackIso,
+    msg.data?.created_at,
+    done.data?.completed_at,
+    added.data?.created_at,
+    checkin.data?.created_at,
+  ].filter((t): t is string => !!t);
+  return times.reduce((a, b) => (new Date(a).getTime() >= new Date(b).getTime() ? a : b));
+}
+
+export async function getProactiveState(
+  userId: string
+): Promise<{ last_proactive_at: string | null; inactivity_stage: number }> {
+  const res = await db()
+    .from("users")
+    .select("last_proactive_at,inactivity_stage")
+    .eq("id", userId)
+    .single<{ last_proactive_at: string | null; inactivity_stage: number }>();
+  if (res.error) throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function setProactiveState(
+  userId: string,
+  patch: { last_proactive_at?: string; inactivity_stage?: number }
+): Promise<void> {
+  const res = await db().from("users").update(patch).eq("id", userId);
+  if (res.error) throw new Error(res.error.message);
+}
