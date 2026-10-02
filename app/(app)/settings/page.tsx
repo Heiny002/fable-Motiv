@@ -4,7 +4,7 @@ import AdminTools from "@/components/AdminTools";
 import SettingsForm from "@/components/SettingsForm";
 import { isAdmin } from "@/lib/admin";
 import { getCurrentUser } from "@/lib/auth";
-import { listMemories } from "@/lib/data";
+import { listMemories, listPendingResetRequests } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,7 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const memories = await listMemories(user.id);
+  const resetRequests = isAdmin(user.email) ? await listPendingResetRequests() : [];
   return (
     <main className="space-y-6 px-4 py-5">
       <div>
@@ -53,7 +54,7 @@ export default async function SettingsPage() {
           <span className="text-slate-300">›</span>
         </Link>
       )}
-      {isAdmin(user.email) && <AdminTools />}
+      {isAdmin(user.email) && <AdminTools requests={resetRequests} />}
     </main>
   );
 }

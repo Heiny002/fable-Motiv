@@ -2,15 +2,25 @@
 
 import { useState } from "react";
 
-export default function AdminTools() {
+interface PendingRequest {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+}
+
+export default function AdminTools({ requests = [] }: { requests?: PendingRequest[] }) {
+  const [pending, setPending] = useState<PendingRequest[]>(requests);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ url: string; name: string; expires_at: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  async function generate(e: React.FormEvent) {
-    e.preventDefault();
+  async function generate(e: React.FormEvent | null, target?: string) {
+    e?.preventDefault();
+    const address = (target ?? email).trim();
+    if (!address) return;
     setBusy(true);
     setError("");
     setResult(null);
@@ -19,11 +29,15 @@ export default function AdminTools() {
       const res = await fetch("/api/v1/admin/reset-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: address }),
       });
       const data = await res.json();
       if (!res.ok) setError(data.error ?? "Something went wrong");
-      else setResult(data);
+      else {
+        setResult(data);
+        // Issuing a link settles any open request from that person.
+        setPending((list) => list.filter((r) => r.email.toLowerCase() !== address.toLowerCase()));
+      }
     } catch {
       setError("Network error — try again");
     } finally {
@@ -47,7 +61,35 @@ export default function AdminTools() {
       <p className="mt-0.5 mb-3 text-xs text-slate-500">
         Generates a one-time link that works for 1 hour. Send it to them yourself.
       </p>
-      <form onSubmit={generate} className="flex gap-2">
+      {pending.length > 0 && (
+        <div className="mb-3 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">
+            Waiting on you ({pending.length})
+          </p>
+          {pending.map((r) => (
+            <div
+              key={r.id}
+              className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-3 py-2"
+            >
+              <span className="min-w-0 text-xs">
+                <span className="block truncate font-semibold text-slate-800">{r.name}</span>
+                <span className="block truncate text-slate-500">
+                  {r.email} ·{" "}
+                  {new Date(r.created_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                </span>
+              </span>
+              <button
+                onClick={() => generate(null, r.email)}
+                disabled={busy}
+                className="shrink-0 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+              >
+                Create link
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form onSubmit={(e) => generate(e)} className="flex gap-2">
         <input
           type="email"
           value={email}
