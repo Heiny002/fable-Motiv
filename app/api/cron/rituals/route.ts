@@ -12,6 +12,7 @@ import {
 } from "@/lib/data";
 import { userLocalDate } from "@/lib/date";
 import { fireDayClosed, fireRitual } from "@/lib/coach/rituals";
+import { allowProactive } from "@/lib/proactive";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -100,7 +101,8 @@ export async function GET(req: Request) {
           resolved += 1;
           // The deadline just passed on a day they never reviewed — say so
           // rather than letting the streak disappear silently.
-          if (next === "lost") {
+          // Skipped (silently) for users who've gone quiet — see lib/proactive.
+          if (next === "lost" && (await allowProactive(user))) {
             const [dayTasks, history] = await Promise.all([
               getPowerTasks(user.id, d.plan_date),
               getPowerDaysBetween(user.id, userLocalDate(user.timezone, -90), todayStr),
@@ -141,11 +143,13 @@ export async function GET(req: Request) {
       try {
         // Claim the day BEFORE sending so a concurrent run can't double-fire.
         await updateUser(user.id, { last_evening_ritual: todayStr });
-        await fireRitual(user, "evening", {
-          consecutiveLosses: losses,
-          carriedCount: 0,
-        });
-        evening += 1;
+        if (await allowProactive(user)) {
+          await fireRitual(user, "evening", {
+            consecutiveLosses: losses,
+            carriedCount: 0,
+          });
+          evening += 1;
+        }
       } catch (err) {
         console.error("[rituals] evening error:", err);
       }
@@ -157,6 +161,10 @@ export async function GET(req: Request) {
     if (morningDue) {
       try {
         await updateUser(user.id, { last_morning_ritual: todayStr });
+        // Gate BEFORE the auto-carry: carrying tasks forward is what keeps
+        // creating "planned" days that later auto-fail, so for a quiet user it
+        // would otherwise keep the whole message loop alive.
+        if (!(await allowProactive(user))) continue;
         const todayTasks = await getPowerTasks(user.id, todayStr);
         let carriedCount = 0;
         if (todayTasks.length === 0) {

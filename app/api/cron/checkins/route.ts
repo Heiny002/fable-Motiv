@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { usersForCheckinHour } from "@/lib/data";
+import { allowProactive } from "@/lib/proactive";
 import { sendPushToUser } from "@/lib/push";
 
 export const runtime = "nodejs";
@@ -17,6 +18,7 @@ export async function GET(req: Request) {
   const due = await usersForCheckinHour(new Date());
   let notified = 0;
   for (const user of due) {
+    if (!(await allowProactive(user))) continue;
     const sent = await sendPushToUser(user.id, {
       title: "Time to check in 🏁",
       body: `${user.name}, your coach is waiting. How did today go?`,

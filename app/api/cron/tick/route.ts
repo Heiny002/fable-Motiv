@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { claimEvent, findUserById, listDueEvents } from "@/lib/data";
 import { fireEvent } from "@/lib/coach/events";
+import { allowProactive } from "@/lib/proactive";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -23,6 +24,9 @@ export async function GET(req: Request) {
     const user = await findUserById(claimed.user_id);
     if (!user) continue;
     try {
+      // A user who's gone quiet doesn't get timer/reminder pings; the event stays
+      // consumed (already claimed) rather than firing the moment they return.
+      if (!(await allowProactive(user))) continue;
       await fireEvent(user, claimed, { sendPush: true });
       fired += 1;
     } catch (err) {
