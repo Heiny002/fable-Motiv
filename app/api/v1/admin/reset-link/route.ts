@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseBody, withUser } from "@/lib/api";
 import { isAdmin } from "@/lib/admin";
-import { createPasswordReset, findUserByEmail, voidPasswordResets } from "@/lib/data";
+import {
+  createPasswordReset,
+  findUserByEmail,
+  markResetRequestsHandled,
+  voidPasswordResets,
+} from "@/lib/data";
 import { newResetToken, RESET_TTL_MS } from "@/lib/resetToken";
 
 export const runtime = "nodejs";
@@ -23,6 +28,9 @@ export const POST = withUser(async (user, req) => {
   const { token, hash } = newResetToken();
   const expires = new Date(Date.now() + RESET_TTL_MS);
   await createPasswordReset({ user_id: target.id, token_hash: hash, expires_at: expires.toISOString() });
+
+  // A link is out, so any open "forgot password" request from them is handled.
+  await markResetRequestsHandled(target.id);
 
   const origin = new URL(req.url).origin;
   return NextResponse.json({

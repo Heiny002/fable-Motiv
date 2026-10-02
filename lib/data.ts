@@ -878,3 +878,64 @@ export async function setPasswordHash(userId: string, passwordHash: string): Pro
   const res = await db().from("users").update({ password_hash: passwordHash }).eq("id", userId);
   if (res.error) throw new Error(res.error.message);
 }
+
+// ---------- password reset requests ----------
+
+export interface ResetRequest {
+  id: string;
+  user_id: string;
+  created_at: string;
+  name: string;
+  email: string;
+}
+
+/**
+ * Record a "forgot password" request. Returns false (and writes nothing) if the
+ * user already has an open request from the last hour, so a visitor mashing the
+ * button can't flood the admin with notifications.
+ */
+export async function createResetRequest(userId: string): Promise<boolean> {
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const open = await db()
+    .from("password_reset_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .is("handled_at", null)
+    .gte("created_at", since);
+  if (open.error) throw new Error(open.error.message);
+  if ((open.count ?? 0) > 0) return false;
+  const ins = await db().from("password_reset_requests").insert({ user_id: userId });
+  if (ins.error) throw new Error(ins.error.message);
+  return true;
+}
+
+export async function listPendingResetRequests(): Promise<ResetRequest[]> {
+  const res = await db()
+    .from("password_reset_requests")
+    .select("id,user_id,created_at,users(name,email)")
+    .is("handled_at", null)
+    .order("created_at", { ascending: false })
+    .limit(20)
+    .returns<
+      Array<{ id: string; user_id: string; created_at: string; users: { name: string; email: string } | null }>
+    >();
+  if (res.error) throw new Error(res.error.message);
+  return (res.data ?? [])
+    .filter((r) => r.users)
+    .map((r) => ({
+      id: r.id,
+      user_id: r.user_id,
+      created_at: r.created_at,
+      name: r.users!.name,
+      email: r.users!.email,
+    }));
+}
+
+export async function markResetRequestsHandled(userId: string): Promise<void> {
+  const res = await db()
+    .from("password_reset_requests")
+    .update({ handled_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .is("handled_at", null);
+  if (res.error) throw new Error(res.error.message);
+}
