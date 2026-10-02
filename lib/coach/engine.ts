@@ -17,7 +17,10 @@ import type { PublicUser } from "../types";
 import { buildSystemPrompt } from "./prompt";
 import { coachTools, executeCoachTool } from "./tools";
 
-export const COACH_MODEL = "claude-opus-5";
+/** Main coaching loop: tool use, planning, and the multi-round agentic work. */
+export const COACH_MODEL = "claude-opus-5-5";
+/** Short one-shot generators (1-3 sentences): event/ritual openers, check-in replies, social posts. */
+export const FAST_MODEL = "claude-sonnet-5-5";
 const MAX_TOOL_ROUNDS = 8;
 
 export function anthropicClient(): Anthropic | null {

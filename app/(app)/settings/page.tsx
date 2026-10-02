@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import AdminTools from "@/components/AdminTools";
 import SettingsForm from "@/components/SettingsForm";
+import { isAdmin } from "@/lib/admin";
 import { getCurrentUser } from "@/lib/auth";
 import { listMemories } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
-
-// Admin-only tools (e.g. onboarding preview) are gated to this account.
-const ADMIN_EMAIL = "jimheiniger@yahoo.com";
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
@@ -37,7 +36,7 @@ export default async function SettingsPage() {
         <span className="text-slate-300">›</span>
       </Link>
 
-      {user.email === ADMIN_EMAIL && (
+      {isAdmin(user.email) && (
         <Link
           href="/welcome?preview=1"
           className="flex items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-white p-4 active:scale-[0.99]"
@@ -54,6 +53,7 @@ export default async function SettingsPage() {
           <span className="text-slate-300">›</span>
         </Link>
       )}
+      {isAdmin(user.email) && <AdminTools />}
     </main>
   );
 }

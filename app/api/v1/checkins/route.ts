@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseBody, withUser } from "@/lib/api";
 import { checkInReply } from "@/lib/coach/checkin";
+import { capMessage, takeUsage } from "@/lib/usage";
 import { addCheckIn, computeStreak, listGoals, recentCheckIns } from "@/lib/data";
 
 export const runtime = "nodejs";
@@ -22,6 +23,10 @@ export const GET = withUser(async (user) => {
 
 export const POST = withUser(async (user, req) => {
   const body = await parseBody(req, schema);
+  const usage = await takeUsage(user, "checkin");
+  if (!usage.ok) {
+    return NextResponse.json({ error: capMessage(usage), code: "daily_cap" }, { status: 429 });
+  }
   const reply = await checkInReply(user, body);
   const goals = await listGoals(user.id);
   const focus = goals.find((g) => g.is_focus && g.status === "active");

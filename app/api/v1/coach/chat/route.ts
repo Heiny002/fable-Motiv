@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parseBody, withUser } from "@/lib/api";
 import { coachTurn } from "@/lib/coach/engine";
 import { recentMessages } from "@/lib/data";
+import { capMessage, takeUsage } from "@/lib/usage";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -24,6 +25,15 @@ export const GET = withUser(async (user) => {
 // POST: one coach turn, streamed back as SSE
 export const POST = withUser(async (user, req) => {
   const { message } = await parseBody(req, schema);
+
+  const usage = await takeUsage(user, "chat");
+  if (!usage.ok) {
+    return NextResponse.json(
+      { error: capMessage(usage), code: "daily_cap", resets_at: usage.resetsAt ?? null },
+      { status: 429 }
+    );
+  }
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

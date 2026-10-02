@@ -22,6 +22,8 @@ const INTENT_SEEDS: Record<string, string> = {
     "Can we set times for today's tasks and schedule check-ins around them?",
 };
 
+class CapError extends Error {}
+
 const MEM_LABEL: Record<string, string> = {
   biographical: "About you",
   goal: "Goal context",
@@ -152,6 +154,11 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
       });
+      if (res.status === 429) {
+        // Daily cap: show the server's explanation instead of a generic failure.
+        const d = await res.json().catch(() => ({}));
+        throw new CapError(d.error ?? "You've reached today's message limit.");
+      }
       if (!res.ok || !res.body) throw new Error("request failed");
 
       const reader = res.body.getReader();
@@ -206,15 +213,14 @@ export default function ChatView({ coachLabel }: { coachLabel: string }) {
           }
         }
       }
-    } catch {
+    } catch (err) {
+      const note =
+        err instanceof CapError ? err.message : "Hmm, I couldn't respond just now. Try again in a moment.";
       setMessages((m) => {
         const copy = [...m];
         const last = copy[copy.length - 1];
         if (last.role === "assistant" && !last.content) {
-          copy[copy.length - 1] = {
-            ...last,
-            content: "Hmm, I couldn't respond just now. Try again in a moment.",
-          };
+          copy[copy.length - 1] = { ...last, content: note };
         }
         return copy;
       });

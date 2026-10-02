@@ -10,7 +10,10 @@ export default async function LoginPage() {
       <h1 className="mb-2 text-3xl font-extrabold">Welcome back</h1>
       <p className="mb-8 text-slate-600">Your streak misses you.</p>
       <AuthForm mode="login" />
-      <p className="mt-6 text-center text-sm text-slate-500">
+      <p className="mt-6 text-center text-xs text-slate-400">
+        Forgot your password? Ask the person who invited you for a reset link.
+      </p>
+      <p className="mt-3 text-center text-sm text-slate-500">
         New here?{" "}
         <Link href="/signup" className="font-semibold text-brand-600">
           Create an account

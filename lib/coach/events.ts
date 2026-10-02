@@ -1,7 +1,7 @@
 import { addMessage } from "../data";
 import { sendPushToUser } from "../push";
 import type { PublicUser, ScheduledEvent } from "../types";
-import { anthropicClient, COACH_MODEL } from "./engine";
+import { anthropicClient, FAST_MODEL } from "./engine";
 import { PERSONALITIES } from "./prompt";
 
 function fallbackMessage(event: ScheduledEvent): string {
@@ -27,7 +27,7 @@ export async function generateEventMessage(
 
   try {
     const response = await client.messages.create({
-      model: COACH_MODEL,
+      model: FAST_MODEL,
       max_tokens: 512,
       thinking: { type: "adaptive" },
       // One short opener — no need to spend deep reasoning on it.
