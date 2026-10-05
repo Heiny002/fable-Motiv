@@ -54,6 +54,23 @@ export default async function SettingsPage() {
           <span className="text-slate-300">›</span>
         </Link>
       )}
+      {isAdmin(user.email) && (
+        <Link
+          href="/admin/users"
+          className="flex items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-white p-4 active:scale-[0.99]"
+        >
+          <span className="flex items-center gap-3">
+            <span className="text-2xl">👥</span>
+            <span>
+              <span className="block text-[15px] font-semibold">Users</span>
+              <span className="block text-xs text-slate-500">
+                See who&apos;s active, who&apos;s gone quiet · admin
+              </span>
+            </span>
+          </span>
+          <span className="text-slate-300">›</span>
+        </Link>
+      )}
       {isAdmin(user.email) && <AdminTools requests={resetRequests} />}
     </main>
   );

@@ -14,8 +14,8 @@ import type { PublicUser } from "./types";
  * timer/reminder firings, the daily reminder push). Returns true if it may send.
  *
  * - Active user: always true.
- * - Quiet 14+ days: true at most once per local day.
- * - Quiet 30+ days: false until the user does something again.
+ * - Quiet 14+ days (3+ if they never engaged): true at most once per local day.
+ * - Quiet 30+ days (10+ if they never engaged): false until the user acts again.
  *
  * Crossing a threshold sends ONE static heads-up (no model call) and returns
  * false for that attempt, so the notice itself is that day's single message.
@@ -24,9 +24,9 @@ import type { PublicUser } from "./types";
  */
 export async function allowProactive(user: PublicUser): Promise<boolean> {
   const now = Date.now();
-  const lastActive = await lastUserActivityAt(user.id, user.created_at);
+  const { at: lastActive, engaged } = await lastUserActivityAt(user.id, user.created_at);
   const days = idleDays(new Date(lastActive).getTime(), now);
-  const stage: InactivityStage = stageForIdleDays(days);
+  const stage: InactivityStage = stageForIdleDays(days, engaged);
   const state = await getProactiveState(user.id);
 
   if (stage === 0) {
@@ -40,7 +40,7 @@ export async function allowProactive(user: PublicUser): Promise<boolean> {
       inactivity_stage: stage,
       last_proactive_at: new Date(now).toISOString(),
     });
-    const notice = transitionNotice(stage, user.name, days);
+    const notice = transitionNotice(stage, user.name, days, engaged);
     await addMessage({ user_id: user.id, role: "assistant", content: notice.body });
     await sendPushToUser(user.id, { title: notice.title, body: notice.body, url: "/chat" });
     return false;
