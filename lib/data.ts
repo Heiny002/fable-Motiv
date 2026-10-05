@@ -962,9 +962,13 @@ export async function recordRecoveryFailure(): Promise<void> {
  * When the user last did something themselves: a chat message, a completed or
  * hand-added Power List task, or a check-in. Carried-over tasks and anything the
  * coach sent are deliberately NOT counted — they happen without the user.
- * Falls back to `fallbackIso` (account creation) if there is no activity at all.
+ * `engaged` is false if they have NEVER done any of those; `at` is then the
+ * fallback (account creation).
  */
-export async function lastUserActivityAt(userId: string, fallbackIso: string): Promise<string> {
+export async function lastUserActivityAt(
+  userId: string,
+  fallbackIso: string
+): Promise<{ at: string; engaged: boolean }> {
   const c = db();
   const [msg, done, added, checkin] = await Promise.all([
     c
@@ -1001,14 +1005,18 @@ export async function lastUserActivityAt(userId: string, fallbackIso: string): P
       .maybeSingle<{ created_at: string }>(),
   ]);
   for (const r of [msg, done, added, checkin]) if (r.error) throw new Error(r.error.message);
-  const times = [
-    fallbackIso,
+  const real = [
     msg.data?.created_at,
     done.data?.completed_at,
     added.data?.created_at,
     checkin.data?.created_at,
   ].filter((t): t is string => !!t);
-  return times.reduce((a, b) => (new Date(a).getTime() >= new Date(b).getTime() ? a : b));
+  // Never acted: measure idleness from signup, on the stricter "never engaged" track.
+  if (real.length === 0) return { at: fallbackIso, engaged: false };
+  return {
+    at: real.reduce((a, b) => (new Date(a).getTime() >= new Date(b).getTime() ? a : b)),
+    engaged: true,
+  };
 }
 
 export async function getProactiveState(
@@ -1029,4 +1037,36 @@ export async function setProactiveState(
 ): Promise<void> {
   const res = await db().from("users").update(patch).eq("id", userId);
   if (res.error) throw new Error(res.error.message);
+}
+
+// ---------- admin: user activity overview ----------
+
+export interface UserActivityRow {
+  user_id: string;
+  name: string;
+  email: string;
+  created_at: string;
+  onboarded: boolean;
+  coach_style: string;
+  invite_code: string | null;
+  inactivity_stage: number;
+  last_active: string;
+  engaged: boolean;
+  msgs_sent: number;
+  coach_msgs: number;
+  goals: number;
+  power_tasks: number;
+  power_done: number;
+  memories: number;
+  push_devices: number;
+  ai_24h: number;
+  ai_total: number;
+}
+
+/** Counts and timestamps only — never message content. */
+export async function adminUserActivity(): Promise<UserActivityRow[]> {
+  const res = await db().rpc("admin_user_activity");
+  if (res.error) throw new Error(res.error.message);
+  // Postgres bigint comes back as number through PostgREST for these small counts.
+  return (res.data ?? []) as UserActivityRow[];
 }
